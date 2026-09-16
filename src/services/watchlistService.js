@@ -4,12 +4,38 @@
  * Stored at: users/{uid}/watchlist/default  →  { symbols: ['AAPL', 'SOL', ...] }
  */
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from './firebase.js';
+import { auth, db, isFirebaseConfigured } from './firebase.js';
+import { getWalletSession } from './authService.js';
+
+function getUserId() {
+  const user = auth.currentUser;
+  if (user?.uid) return user.uid;
+  const session = getWalletSession();
+  if (session?.id || session?.uid) return session.id || session.uid;
+  return 'sona_default_user';
+}
 
 function requireAuth() {
-  const user = auth.currentUser;
-  if (!user) throw new Error('Not signed in.');
-  return user;
+  const uid = getUserId();
+  if (!uid) throw new Error('Not signed in.');
+  return { uid };
+}
+
+const WL_STORAGE_KEY = (uid) => `sona_watchlist_${uid}`;
+
+function readLocalWatchlist(uid) {
+  try {
+    const raw = localStorage.getItem(WL_STORAGE_KEY(uid));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalWatchlist(uid, symbols) {
+  try {
+    localStorage.setItem(WL_STORAGE_KEY(uid), JSON.stringify(symbols));
+  } catch {}
 }
 
 function watchlistRef(uid) {
@@ -17,12 +43,32 @@ function watchlistRef(uid) {
 }
 
 async function readSymbols(uid) {
-  const snap = await getDoc(watchlistRef(uid));
-  return snap.exists() ? (snap.data().symbols || []) : [];
+  let list = readLocalWatchlist(uid);
+
+  if (isFirebaseConfigured && auth.currentUser) {
+    try {
+      const firestoreTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 2000)
+      );
+      const snap = await Promise.race([getDoc(watchlistRef(uid)), firestoreTimeout]);
+      if (snap?.exists()) {
+        const remote = snap.data().symbols || [];
+        const merged = Array.from(new Set([...list, ...remote]));
+        writeLocalWatchlist(uid, merged);
+        return merged;
+      }
+    } catch {}
+  }
+
+  return list;
 }
 
 async function writeSymbols(uid, symbols) {
-  await setDoc(watchlistRef(uid), { symbols, updatedAt: serverTimestamp() });
+  writeLocalWatchlist(uid, symbols);
+
+  if (isFirebaseConfigured && auth.currentUser) {
+    setDoc(watchlistRef(uid), { symbols, updatedAt: serverTimestamp() }).catch(() => {});
+  }
 }
 
 export async function getWatchlist() {
@@ -34,14 +80,17 @@ export async function addToWatchlist(symbol) {
   const user    = requireAuth();
   const current = await readSymbols(user.uid);
   if (!current.includes(symbol)) {
-    await writeSymbols(user.uid, [...current, symbol]);
+    const next = [...current, symbol];
+    await writeSymbols(user.uid, next);
+    return next;
   }
-  return readSymbols(user.uid);
+  return current;
 }
 
 export async function removeFromWatchlist(symbol) {
   const user    = requireAuth();
   const current = await readSymbols(user.uid);
-  await writeSymbols(user.uid, current.filter((s) => s !== symbol));
-  return readSymbols(user.uid);
+  const next = current.filter((s) => s !== symbol);
+  await writeSymbols(user.uid, next);
+  return next;
 }

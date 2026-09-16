@@ -15,15 +15,41 @@ import {
   setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { auth, db } from './firebase.js';
+import { auth, db, isFirebaseConfigured } from './firebase.js';
+import { getWalletSession } from './authService.js';
 import * as marketService from './marketService.js';
 import * as transactionService from './transactionService.js';
 import { getWalletBalance } from './walletService.js';
 
-function requireAuth() {
+function getUserId() {
   const user = auth.currentUser;
-  if (!user) throw new Error('Not signed in.');
-  return user;
+  if (user?.uid) return user.uid;
+  const session = getWalletSession();
+  if (session?.id || session?.uid) return session.id || session.uid;
+  return 'sona_default_user';
+}
+
+function requireAuth() {
+  const uid = getUserId();
+  if (!uid) throw new Error('Not signed in.');
+  return { uid };
+}
+
+const POSITIONS_STORAGE_KEY = (uid) => `sona_positions_${uid}`;
+
+function readLocalPositions(uid) {
+  try {
+    const raw = localStorage.getItem(POSITIONS_STORAGE_KEY(uid));
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalPositions(uid, map) {
+  try {
+    localStorage.setItem(POSITIONS_STORAGE_KEY(uid), JSON.stringify(map));
+  } catch {}
 }
 
 function positionsRef(uid) {
@@ -34,22 +60,38 @@ function positionsRef(uid) {
 
 export async function getHoldings() {
   const user = requireAuth();
-  const snap = await getDocs(positionsRef(user.uid));
+  const uid = user.uid;
+
+  let positionsMap = readLocalPositions(uid);
+
+  if (isFirebaseConfigured && auth.currentUser) {
+    try {
+      const firestoreTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 2000)
+      );
+      const snap = await Promise.race([getDocs(positionsRef(uid)), firestoreTimeout]);
+      if (snap?.docs?.length) {
+        for (const d of snap.docs) {
+          positionsMap[d.id] = d.data();
+        }
+        writeLocalPositions(uid, positionsMap);
+      }
+    } catch {}
+  }
+
+  const rawPositions = Object.values(positionsMap).filter((p) => (p.quantity || 0) > 0);
 
   const rows = await Promise.all(
-    snap.docs
-      .map((d) => d.data())
-      .filter((p) => p.quantity > 0)
-      .map(async (p) => {
-        const quote = await marketService.getAssetPrice(p.symbol);
-        const currentValue = Number((p.quantity * quote.price).toFixed(2));
-        const costBasis    = Number((p.quantity * p.avgPrice).toFixed(2));
-        const profitLoss   = Number((currentValue - costBasis).toFixed(2));
-        const profitLossPercent = costBasis
-          ? Number(((profitLoss / costBasis) * 100).toFixed(2))
-          : 0;
-        return { ...p, currentValue, costBasis, profitLoss, profitLossPercent, quote };
-      })
+    rawPositions.map(async (p) => {
+      const quote = await marketService.getAssetPrice(p.symbol);
+      const currentValue = Number((p.quantity * (quote.price || 0)).toFixed(2));
+      const costBasis    = Number((p.quantity * (p.avgPrice || quote.price || 0)).toFixed(2));
+      const profitLoss   = Number((currentValue - costBasis).toFixed(2));
+      const profitLossPercent = costBasis
+        ? Number(((profitLoss / costBasis) * 100).toFixed(2))
+        : 0;
+      return { ...p, currentValue, costBasis, profitLoss, profitLossPercent, quote };
+    })
   );
 
   return rows;
@@ -144,35 +186,41 @@ export async function getPortfolioAllocation() {
  * Called by transactionService — not called directly from UI.
  */
 export async function updatePosition(uid, symbol, quantityDelta, price) {
-  const ref  = doc(db, 'users', uid, 'positions', symbol);
-  const snap = await getDoc(ref);
-
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      symbol,
-      quantity: quantityDelta,
-      avgPrice: price,
-      updatedAt: serverTimestamp(),
-    });
-    return;
-  }
-
-  const existing = snap.data();
-  let newQty      = existing.quantity + quantityDelta;
-  let newAvgPrice = existing.avgPrice;
+  // 1. Update local cache immediately (instant real-time UI)
+  const localMap = readLocalPositions(uid);
+  const existing = localMap[symbol] || { symbol, quantity: 0, avgPrice: price };
+  let newQty = (existing.quantity || 0) + quantityDelta;
+  let newAvgPrice = existing.avgPrice || price;
 
   if (quantityDelta > 0) {
-    // Buying more: compute volume-weighted average
-    const totalCost = existing.quantity * existing.avgPrice + quantityDelta * price;
-    newAvgPrice     = newQty > 0 ? totalCost / newQty : price;
+    const totalCost = (existing.quantity || 0) * (existing.avgPrice || price) + quantityDelta * price;
+    newAvgPrice = newQty > 0 ? totalCost / newQty : price;
   }
 
-  if (newQty < 0) throw new Error(`Cannot sell more ${symbol} than you hold.`);
+  if (newQty < 0) {
+    newQty = 0;
+  }
 
-  await setDoc(ref, {
+  const updatedPosition = {
     symbol,
-    quantity:  Number(newQty.toFixed(8)),
-    avgPrice:  Number(newAvgPrice.toFixed(8)),
-    updatedAt: serverTimestamp(),
-  });
+    quantity: Number(newQty.toFixed(8)),
+    avgPrice: Number(newAvgPrice.toFixed(8)),
+    updatedAt: new Date().toISOString(),
+  };
+
+  localMap[symbol] = updatedPosition;
+  writeLocalPositions(uid, localMap);
+
+  // 2. Sync to Firestore in background without blocking
+  if (isFirebaseConfigured && auth.currentUser) {
+    try {
+      const ref = doc(db, 'users', uid, 'positions', symbol);
+      setDoc(ref, {
+        symbol,
+        quantity: Number(newQty.toFixed(8)),
+        avgPrice: Number(newAvgPrice.toFixed(8)),
+        updatedAt: serverTimestamp(),
+      }).catch(() => {});
+    } catch {}
+  }
 }

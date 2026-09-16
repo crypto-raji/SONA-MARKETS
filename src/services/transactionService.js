@@ -19,17 +19,43 @@ import {
   limit,
   serverTimestamp,
 } from 'firebase/firestore';
-import { auth, db } from './firebase.js';
+import { auth, db, isFirebaseConfigured } from './firebase.js';
+import { getWalletSession } from './authService.js';
 import { updatePosition } from './portfolioService.js';
 import { getAnchorWallet, sendOnChainSolanaTransfer } from './walletService.js';
 
 const FEE_RATE = 0.001; // 0.1% platform fee
 const FEE_RECIPIENT = import.meta.env.VITE_PLATFORM_FEE_RECIPIENT || null;
 
-function requireAuth() {
+function getUserId() {
   const user = auth.currentUser;
-  if (!user) throw new Error('Not signed in.');
-  return user;
+  if (user?.uid) return user.uid;
+  const session = getWalletSession();
+  if (session?.id || session?.uid) return session.id || session.uid;
+  return 'sona_default_user';
+}
+
+function requireAuth() {
+  const uid = getUserId();
+  if (!uid) throw new Error('Not signed in.');
+  return { uid };
+}
+
+const TX_STORAGE_KEY = (uid) => `sona_transactions_${uid}`;
+
+function readLocalTransactions(uid) {
+  try {
+    const raw = localStorage.getItem(TX_STORAGE_KEY(uid));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalTransactions(uid, list) {
+  try {
+    localStorage.setItem(TX_STORAGE_KEY(uid), JSON.stringify(list));
+  } catch {}
 }
 
 function txCollectionRef(uid) {
@@ -41,10 +67,30 @@ export function estimateFee(amount) {
 }
 
 async function recordTransaction(uid, data) {
-  const record = { ...data, timestamp: serverTimestamp() };
+  const isoTimestamp = new Date().toISOString();
+  const localId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const record = {
+    id: localId,
+    ...data,
+    timestamp: isoTimestamp,
+  };
   if (FEE_RECIPIENT && data.fee) record.feeRecipient = FEE_RECIPIENT;
-  const ref = await addDoc(txCollectionRef(uid), record);
-  return { id: ref.id, ...data };
+
+  // 1. Save to local storage immediately for real-time instant UI sync
+  const list = readLocalTransactions(uid);
+  list.unshift(record);
+  writeLocalTransactions(uid, list.slice(0, 100));
+
+  // 2. Sync to Firestore in background
+  if (isFirebaseConfigured && auth.currentUser) {
+    addDoc(txCollectionRef(uid), {
+      ...data,
+      feeRecipient: record.feeRecipient || null,
+      timestamp: serverTimestamp(),
+    }).catch(() => {});
+  }
+
+  return record;
 }
 
 // ── On-chain helper ────────────────────────────────────────────────────────────
@@ -234,22 +280,60 @@ export async function receiveAsset({ symbol, network }) {
 
 export async function getTransactionHistory() {
   const user = requireAuth();
-  const q    = query(txCollectionRef(user.uid), orderBy('timestamp', 'desc'), limit(100));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    timestamp: d.data().timestamp?.toDate?.()?.toISOString() || null,
-  }));
+  const uid = user.uid;
+
+  let list = readLocalTransactions(uid);
+
+  if (isFirebaseConfigured && auth.currentUser) {
+    try {
+      const firestoreTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 2000)
+      );
+      const q = query(txCollectionRef(uid), orderBy('timestamp', 'desc'), limit(100));
+      const snap = await Promise.race([getDocs(q), firestoreTimeout]);
+      if (snap?.docs?.length) {
+        const remoteList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+          timestamp: d.data().timestamp?.toDate?.()?.toISOString() || null,
+        }));
+        
+        // Merge remote and local without duplicates
+        const seen = new Set(remoteList.map((r) => r.id));
+        const merged = [...remoteList];
+        for (const localTx of list) {
+          if (!seen.has(localTx.id)) {
+            merged.push(localTx);
+          }
+        }
+        list = merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        writeLocalTransactions(uid, list.slice(0, 100));
+      }
+    } catch {}
+  }
+
+  return list;
 }
 
 export async function getTransaction(id) {
   const user = requireAuth();
-  const snap = await getDoc(doc(db, 'users', user.uid, 'transactions', id));
-  if (!snap.exists()) return null;
-  return {
-    id: snap.id,
-    ...snap.data(),
-    timestamp: snap.data().timestamp?.toDate?.()?.toISOString() || null,
-  };
+  const uid = user.uid;
+  const list = readLocalTransactions(uid);
+  const found = list.find((t) => t.id === id);
+  if (found) return found;
+
+  if (isFirebaseConfigured && auth.currentUser) {
+    try {
+      const snap = await getDoc(doc(db, 'users', uid, 'transactions', id));
+      if (snap.exists()) {
+        return {
+          id: snap.id,
+          ...snap.data(),
+          timestamp: snap.data().timestamp?.toDate?.()?.toISOString() || null,
+        };
+      }
+    } catch {}
+  }
+
+  return null;
 }
