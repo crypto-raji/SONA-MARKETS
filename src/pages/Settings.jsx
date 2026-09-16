@@ -223,7 +223,13 @@ export default function Settings() {
     if (pinModal.pendingEnable) {
       await update('security', 'requirePinForSends', true);
     }
-    if (setUser && user) setUser({ ...user, pinIsSet: true });
+    if (user) {
+      const updatedUser = { ...user, pinIsSet: true };
+      if (setUser) setUser(updatedUser);
+      try {
+        localStorage.setItem('sona_wallet_session', JSON.stringify(updatedUser));
+      } catch {}
+    }
   };
 
   const handleGenerateWallet = async (chainKey) => {

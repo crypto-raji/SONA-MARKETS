@@ -331,21 +331,35 @@ const PIN_STORAGE_KEY = 'sona_pin_hash';
 
 /**
  * Hash and store the user's transaction PIN.
- * Saves to localStorage immediately (instant), then syncs to Firestore in the background.
+ * Saves to localStorage immediately (instant), then syncs to Firestore.
  */
 export async function createTransactionPin(pin) {
   if (!/^\d{4,6}$/.test(pin)) throw new Error('PIN must be 4–6 digits.');
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('Not signed in.');
+  const uid = auth?.currentUser?.uid || getWalletSession()?.id || getWalletSession()?.uid || 'sona_default_user';
 
   const hash = await hashPin(pin);
 
-  // Save locally first — this is instant and never fails
-  try { localStorage.setItem(PIN_STORAGE_KEY, hash); } catch {}
+  // 1. Save locally for this user
+  try {
+    localStorage.setItem(PIN_STORAGE_KEY, hash);
+    localStorage.setItem(`${PIN_STORAGE_KEY}_${uid}`, hash);
+    
+    // Update local wallet session if present
+    const session = getWalletSession();
+    if (session) {
+      session.pinIsSet = true;
+      localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
+    }
+  } catch {}
 
-  // Sync to Firestore in background — don't block or throw on failure
-  setDoc(userRef(currentUser.uid), { pinIsSet: true, pinHash: hash }, { merge: true })
-    .catch(() => {});
+  // 2. Sync to Firestore if authenticated with Firebase
+  if (isFirebaseConfigured && auth?.currentUser) {
+    try {
+      await setDoc(userRef(auth.currentUser.uid), { pinIsSet: true, pinHash: hash }, { merge: true });
+    } catch (e) {
+      console.warn('[Sona] Remote PIN sync notice:', e);
+    }
+  }
 
   return { success: true };
 }
@@ -356,28 +370,35 @@ export async function createTransactionPin(pin) {
  */
 export async function verifyTransactionPin(pin) {
   if (!/^\d{4,6}$/.test(pin)) return { success: false };
-  const currentUser = auth.currentUser;
-  if (!currentUser) return { success: false };
+  const uid = auth?.currentUser?.uid || getWalletSession()?.id || getWalletSession()?.uid || 'sona_default_user';
 
   const hash = await hashPin(pin);
 
-  // Check localStorage first — instant
+  // 1. Check user-specific localStorage first
   try {
-    const local = localStorage.getItem(PIN_STORAGE_KEY);
-    if (local) return { success: hash === local };
+    const localUserPin = localStorage.getItem(`${PIN_STORAGE_KEY}_${uid}`);
+    if (localUserPin) return { success: hash === localUserPin };
+
+    const localDefault = localStorage.getItem(PIN_STORAGE_KEY);
+    if (localDefault) return { success: hash === localDefault };
   } catch {}
 
-  // Fallback to Firestore
-  try {
-    const snap = await getDoc(userRef(currentUser.uid));
-    const stored = snap.data()?.pinHash;
-    if (!stored) return { success: false, reason: 'no_pin_set' };
-    // Cache it locally for next time
-    try { localStorage.setItem(PIN_STORAGE_KEY, stored); } catch {}
-    return { success: hash === stored };
-  } catch {
-    return { success: false };
+  // 2. Fallback to Firestore
+  if (isFirebaseConfigured && auth?.currentUser) {
+    try {
+      const snap = await getDoc(userRef(auth.currentUser.uid));
+      const stored = snap.data()?.pinHash;
+      if (stored) {
+        try {
+          localStorage.setItem(`${PIN_STORAGE_KEY}_${uid}`, stored);
+          localStorage.setItem(PIN_STORAGE_KEY, stored);
+        } catch {}
+        return { success: hash === stored };
+      }
+    } catch {}
   }
+
+  return { success: false };
 }
 
 export async function getUserProfile() {
