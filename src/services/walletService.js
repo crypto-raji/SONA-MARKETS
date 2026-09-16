@@ -19,11 +19,16 @@ import { getSolanaKeypair } from './hdWalletService.js';
 
 // Known mint mappings across Solana mainnet and devnet (both standard SPL & Token-2022)
 export const KNOWN_SOLANA_MINTS = {
-  // USDC
+  // USDC - Mainnet
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'USDC', // Mainnet SPL
-  '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU': 'USDC', // Devnet SPL
+  // USDC - Devnet faucets & mints
+  '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU': 'USDC', // Devnet SPL (Circle / Solana standard)
   'CXk2AMBfi3TwaEL2468s6zP8xq9NxTXjp9gjMgzeUynM': 'USDC', // Devnet Token-2022 (Circle Faucet)
   'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr': 'USDC', // Devnet alternate
+  'USDCoMPuhwwhMRf4wELGgGgZf5KxU1qA9mE98h7fF4z': 'USDC', // Devnet faucet mint
+  'CpMah1WCSngRwGsqbRNMS8nhr5B37B2eXU8kH49xWUVe': 'USDC', // Devnet test mint
+  'BXXkv6z8ykpG1xnh2YjEGNo8DpK5tZKYJa759Dg88fgU': 'USDC', // Wormhole devnet USDC
+  'AmgGgZf5KxU1qA9mE98h7fF4zEPjFWdd5AufqSSqeM2q': 'USDC',
   // USDT
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 'USDT',
   'EJwZgeZrdC8TXT2sgQjVoVHdpnhE2mCePnoctpkTremb': 'USDT',

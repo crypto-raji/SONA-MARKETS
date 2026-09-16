@@ -196,8 +196,25 @@ export async function getSolanaKeypair(uid) {
 }
 
 /**
+ * Reveal the 12-word mnemonic seed phrase for user backup/export.
+ * Decrypts from localStorage or passed cipherText.
+ */
+export async function revealMnemonic(uid, customCipher = null) {
+  const cipher = customCipher || localStorage.getItem(LS_MNEMONIC_KEY(uid));
+  if (!cipher) return null;
+  try {
+    const mnemonic = await decrypt(uid, cipher);
+    return mnemonic;
+  } catch (err) {
+    console.error('[Sona HD Wallet] Failed to reveal mnemonic:', err);
+    return null;
+  }
+}
+
+/**
  * Returns true if a HD wallet exists in localStorage for this uid.
  */
 export function hasHDWallet(uid) {
   return !!localStorage.getItem(LS_MNEMONIC_KEY(uid));
 }
+

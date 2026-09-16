@@ -105,8 +105,14 @@ export default function ReceiveModal({ open = true, onClose, defaultSymbol, asMo
     setGenerating(true);
     try {
       const uid = user.id || user.uid;
+      let addresses = user?.wallets;
       const restored = await restoreHDWallet(uid);
-      const addresses = restored?.addresses || (await createHDWallet(uid)).addresses;
+      if (restored?.addresses) {
+        addresses = restored.addresses;
+      } else if (!addresses?.solana) {
+        const hd = await createHDWallet(uid);
+        addresses = hd.addresses;
+      }
       const newWallets = { ...localWallets, ...addresses };
       setLocalWallets(newWallets);
       if (setUser) setUser({ ...user, wallets: newWallets });

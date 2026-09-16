@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import PinModal from '../components/PinModal.jsx';
+import MnemonicModal from '../components/MnemonicModal.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import * as userService from '../services/userService.js';
@@ -194,6 +195,7 @@ export default function Settings() {
   const [wallets, setWallets]      = useState({});
   const [generating, setGenerating] = useState(null);
   const [pinModal, setPinModal]    = useState({ open: false, mode: 'create' });
+  const [mnemonicModalOpen, setMnemonicModalOpen] = useState(false);
 
   useEffect(() => {
     userService.getSettings().then(setSettings).catch(() => {});
@@ -237,8 +239,14 @@ export default function Settings() {
     setGenerating(chainKey);
     try {
       const uid = user.id || user.uid;
+      let addresses = user?.wallets;
       const restored = await restoreHDWallet(uid);
-      const addresses = restored?.addresses ?? (await createHDWallet(uid)).addresses;
+      if (restored?.addresses) {
+        addresses = restored.addresses;
+      } else if (!addresses?.solana) {
+        const hd = await createHDWallet(uid);
+        addresses = hd.addresses;
+      }
       const newWallets = { ...wallets, ...addresses };
       setWallets(newWallets);
       if (setUser) setUser({ ...user, wallets: newWallets });
@@ -305,7 +313,7 @@ export default function Settings() {
         </Section>
 
         {/* ── Security ── */}
-        <Section title="Security">
+        <Section title="Security & Recovery">
           <Row
             label="Require PIN for sends"
             sublabel={user?.pinIsSet ? 'PIN is set — required before every outgoing transfer' : 'You will be prompted to create a PIN'}
@@ -319,6 +327,12 @@ export default function Settings() {
               right={<span style={{ fontSize: 18, color: 'var(--color-text-tertiary)' }}>›</span>}
             />
           )}
+          <Row
+            label="Secret Recovery Phrase (12 Words)"
+            sublabel="View and backup your BIP-39 master recovery key"
+            onClick={() => setMnemonicModalOpen(true)}
+            right={<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-accent)' }}>Reveal ›</span>}
+          />
           <Row
             label="Biometric unlock"
             sublabel="Face ID or Touch ID to open Sona"
@@ -408,6 +422,13 @@ export default function Settings() {
         mode={pinModal.mode}
         onClose={() => setPinModal({ open: false })}
         onSuccess={handlePinCreated}
+      />
+
+      {/* Secret Recovery Phrase modal */}
+      <MnemonicModal
+        open={mnemonicModalOpen}
+        onClose={() => setMnemonicModalOpen(false)}
+        user={user}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header.jsx';
 import PinModal from '../components/PinModal.jsx';
+import MnemonicModal from '../components/MnemonicModal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { getAvatarUrl } from '../utils/avatar.js';
 import { truncateAddress } from '../utils/format.js';
@@ -97,6 +98,7 @@ export default function Profile() {
   const { user, signOut, setUser } = useAuth();
   const navigate                   = useNavigate();
   const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [mnemonicModalOpen, setMnemonicModalOpen] = useState(false);
   const [wallets, setWallets]      = useState(user?.wallets || {});
   const [generating, setGenerating] = useState(null);
 
@@ -105,11 +107,11 @@ export default function Profile() {
     setGenerating(chainKey);
     try {
       const uid = user.id || user.uid;
-      let addresses = null;
+      let addresses = user?.wallets;
       const restored = await restoreHDWallet(uid);
       if (restored?.addresses) {
         addresses = restored.addresses;
-      } else {
+      } else if (!addresses?.solana) {
         const hd = await createHDWallet(uid);
         addresses = hd.addresses;
       }
@@ -225,17 +227,32 @@ export default function Profile() {
               overflow: 'hidden', marginBottom: 20,
             }}>
               <div style={{ padding: '14px 20px 10px', borderBottom: '1px solid var(--color-border)' }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>Security</div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Security & Recovery</div>
               </div>
               <InfoRow label="Sign-in method" value={user.authMethod === 'google' ? '🔵 Google' : '🔐 Wallet'} />
-              <InfoRow label="Transaction PIN" value={user.pinIsSet ? '✓ Configured' : 'Not set'} last />
-              <div style={{ padding: '12px 20px' }}>
+              <InfoRow label="Transaction PIN" value={user.pinIsSet ? '✓ Configured' : 'Not set'} />
+              <InfoRow label="Secret Seed Phrase" value="🔑 12 Words Backed Up" last />
+              
+              <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button
                   className="btn btn-secondary"
                   style={{ fontSize: 13, width: '100%' }}
                   onClick={() => setPinModalOpen(true)}
                 >
                   {user.pinIsSet ? 'Change Transaction PIN' : 'Create Transaction PIN'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: 13, width: '100%',
+                    background: 'rgba(201,145,58,0.12)',
+                    borderColor: 'rgba(201,145,58,0.35)',
+                    color: '#E8B966',
+                    fontWeight: 600,
+                  }}
+                  onClick={() => setMnemonicModalOpen(true)}
+                >
+                  🔑 View Secret Recovery Phrase (12 Words)
                 </button>
               </div>
             </div>
@@ -276,6 +293,12 @@ export default function Profile() {
             setUser({ ...user, pinIsSet: true });
           }
         }}
+      />
+
+      <MnemonicModal
+        open={mnemonicModalOpen}
+        onClose={() => setMnemonicModalOpen(false)}
+        user={user}
       />
     </div>
   );

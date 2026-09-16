@@ -28,6 +28,7 @@ import {
   restoreHDWallet,
   restoreHDWalletFromCipher,
   getEncryptedMnemonic,
+  revealMnemonic,
 } from './hdWalletService.js';
 
 const WALLET_SESSION_KEY = 'sona_wallet_session';
@@ -85,8 +86,13 @@ async function getOrCreateUserDoc(firebaseUser) {
     if (e.message === 'firestore_timeout') {
       console.warn('[Sona] Firestore timed out. Using local wallet state.');
       if (!wallets.solana) {
-        const hd = await createHDWallet(uid);
-        wallets = hd.addresses;
+        const cachedSession = getWalletSession();
+        if (cachedSession?.id === uid && cachedSession?.wallets?.solana) {
+          wallets = cachedSession.wallets;
+        } else {
+          const hd = await createHDWallet(uid);
+          wallets = hd.addresses;
+        }
       }
       return mapFirebaseUser(firebaseUser, { wallets });
     }
@@ -111,8 +117,11 @@ async function getOrCreateUserDoc(firebaseUser) {
           await updateDoc(ref, { encryptedMnemonic: cipher, wallets });
         } catch {}
       }
+    } else if (data.wallets?.solana) {
+      // Doc has wallets stored
+      wallets = data.wallets;
     } else {
-      // Create wallet if neither local nor firestore had one
+      // Create wallet only if neither local nor firestore had one
       const hd = await createHDWallet(uid);
       wallets = hd.addresses;
       try {
@@ -435,3 +444,30 @@ export async function verifyTransactionPin(pin) {
 export async function getUserProfile() {
   return getCurrentUser();
 }
+
+/**
+ * Reveal / export 12-word recovery mnemonic for the active user.
+ */
+export async function exportRecoveryPhrase() {
+  const currentUser = auth?.currentUser;
+  const session = getWalletSession();
+  const uid = currentUser?.uid || session?.id || session?.uid;
+  if (!uid) return null;
+
+  // 1. Try local storage first
+  let mnemonic = await revealMnemonic(uid);
+  if (mnemonic) return mnemonic;
+
+  // 2. Try Firestore if local was cleared
+  if (currentUser) {
+    try {
+      const snap = await getDoc(userRef(uid));
+      const cipher = snap.data()?.encryptedMnemonic;
+      if (cipher) {
+        return await revealMnemonic(uid, cipher);
+      }
+    } catch {}
+  }
+  return null;
+}
+
