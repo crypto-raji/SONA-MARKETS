@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useCallback, useEffect, useState } from 'react';
 import * as portfolioService from '../services/portfolioService.js';
 import * as watchlistService from '../services/watchlistService.js';
+import * as marketService from '../services/marketService.js';
 import { getWalletBalance } from '../services/walletService.js';
+import { restoreHDWallet } from '../services/hdWalletService.js';
 import { useAuth } from './AuthContext.jsx';
 
 const PortfolioContext = createContext(null);
@@ -35,23 +37,58 @@ export function PortfolioProvider({ children }) {
   // Only show spinner when there is no cached data to display
   const [loading, setLoading] = useState(!cached?.data);
 
-  // Wallet address comes directly from auth state — no Firestore round-trip needed
-  const solanaAddress = user?.wallets?.solana || null;
+  // Wallet address comes directly from auth state or fallback to local HD wallet
+  const solanaAddress = user?.wallets?.solana || user?.walletAddress || null;
 
   const refreshPortfolio = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      let targetAddress = solanaAddress;
+      if (!targetAddress && user?.id) {
+        try {
+          const restored = await restoreHDWallet(user.id);
+          targetAddress = restored?.addresses?.solana || null;
+        } catch {}
+      }
+
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('portfolio_timeout')), 20000)
       );
       // Fetch portfolio data and on-chain balance in parallel
       const [data, onChain] = await Promise.all([
         Promise.race([portfolioService.getPortfolio(), timeout]),
-        solanaAddress ? getWalletBalance(solanaAddress) : Promise.resolve({ sol: 0, tokens: [], isLive: false }),
+        targetAddress ? getWalletBalance(targetAddress) : Promise.resolve({ sol: 0, tokens: [], isLive: false }),
       ]);
+
+      // Calculate total value from on-chain tokens + internal positions
+      let computedTotalValue = data?.totalValue || 0;
+      if (onChain?.tokens?.length || (onChain?.sol && onChain.sol > 0)) {
+        let onChainVal = 0;
+        for (const t of (onChain.tokens || [])) {
+          if (t.symbol === 'USDC' || t.symbol === 'USDT') {
+            onChainVal += t.amount;
+          } else if (t.symbol === 'SOL') {
+            try {
+              const quote = await marketService.getAssetPrice('SOL');
+              onChainVal += t.amount * (quote?.price || 150);
+            } catch {
+              onChainVal += t.amount * 150;
+            }
+          } else {
+            try {
+              const quote = await marketService.getAssetPrice(t.symbol);
+              onChainVal += t.amount * (quote?.price || 0);
+            } catch {}
+          }
+        }
+        const internalTotal = (data?.holdings || []).reduce((s, h) => s + (h.currentValue || 0), 0);
+        computedTotalValue = Number((internalTotal + onChainVal).toFixed(2));
+      }
+
       const merged = {
         ...data,
-        walletAddress: solanaAddress,
+        walletAddress: targetAddress,
+        totalValue: computedTotalValue,
         availableBalance: onChain.sol ?? data.availableBalance,
         onChainTokens: onChain.tokens ?? [],
         balanceIsLive: onChain.isLive ?? false,
@@ -73,7 +110,7 @@ export function PortfolioProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [solanaAddress]);
+  }, [solanaAddress, user?.id]);
 
   const refreshWatchlist = useCallback(async () => {
     try {

@@ -20,6 +20,7 @@ import { getWalletSession } from './authService.js';
 import * as marketService from './marketService.js';
 import * as transactionService from './transactionService.js';
 import { getWalletBalance } from './walletService.js';
+import { restoreHDWallet } from './hdWalletService.js';
 
 function getUserId() {
   const user = auth.currentUser;
@@ -103,15 +104,33 @@ export async function getPortfolio() {
   const [holdings, recentTransactions, onChain] = await Promise.all([
     getHoldings(),
     transactionService.getTransactionHistory().then((txs) => txs.slice(0, 5)),
-    // Read the user's Solana address from Firestore profile (saved when they generate/connect a wallet)
+    // Read the user's Solana address from local storage, session, or Firestore
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        const solanaAddress = snap.data()?.wallets?.solana || snap.data()?.walletAddress || null;
-        if (!solanaAddress) return { sol: 0, address: null };
+        let solanaAddress = null;
+        try {
+          const localRestored = await restoreHDWallet(user.uid);
+          if (localRestored?.addresses?.solana) {
+            solanaAddress = localRestored.addresses.solana;
+          }
+        } catch {}
+
+        if (!solanaAddress) {
+          const session = getWalletSession();
+          if (session?.wallets?.solana) solanaAddress = session.wallets.solana;
+        }
+
+        if (!solanaAddress && isFirebaseConfigured) {
+          try {
+            const snap = await getDoc(doc(db, 'users', user.uid));
+            solanaAddress = snap.data()?.wallets?.solana || snap.data()?.walletAddress || null;
+          } catch {}
+        }
+
+        if (!solanaAddress) return { sol: 0, address: null, tokens: [] };
         const result = await getWalletBalance(solanaAddress);
         return { ...result, address: solanaAddress };
-      } catch { return { sol: 0, address: null }; }
+      } catch { return { sol: 0, address: null, tokens: [] }; }
     })(),
   ]);
 
@@ -120,6 +139,14 @@ export async function getPortfolio() {
   for (const t of onChainTokens) {
     if (t.symbol === 'USDC' || t.symbol === 'USDT') {
       onChainTokensValue += t.amount;
+    } else if (t.symbol === 'SOL') {
+      try {
+        const quote = await marketService.getAssetPrice('SOL');
+        const solPrice = quote?.price || 150;
+        onChainTokensValue += t.amount * solPrice;
+      } catch {
+        onChainTokensValue += t.amount * 150;
+      }
     } else {
       try {
         const quote = await marketService.getAssetPrice(t.symbol);

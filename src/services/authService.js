@@ -77,27 +77,26 @@ async function getOrCreateUserDoc(firebaseUser) {
 
   // ── Step 2: Query Firestore profile ──────────────────────────────
   const firestoreTimeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('firestore_timeout')), 6000)
+    setTimeout(() => reject(new Error('firestore_timeout')), 4000)
   );
 
-  let snap;
+  let snap = null;
   try {
     snap = await Promise.race([getDoc(ref), firestoreTimeout]);
   } catch (e) {
-    if (e.message === 'firestore_timeout') {
-      console.warn('[Sona] Firestore timed out. Using local wallet state.');
-      if (!wallets.solana) {
-        const cachedSession = getWalletSession();
-        if (cachedSession?.id === uid && cachedSession?.wallets?.solana) {
-          wallets = cachedSession.wallets;
-        } else {
+    console.warn('[Sona] Firestore check notice:', e.message || e);
+    if (!wallets.solana) {
+      const cachedSession = getWalletSession();
+      if (cachedSession?.id === uid && cachedSession?.wallets?.solana) {
+        wallets = cachedSession.wallets;
+      } else {
+        try {
           const hd = await createHDWallet(uid);
           wallets = hd.addresses;
-        }
+        } catch {}
       }
-      return mapFirebaseUser(firebaseUser, { wallets });
     }
-    throw e;
+    return mapFirebaseUser(firebaseUser, { wallets });
   }
 
   // Existing user doc in Firestore
