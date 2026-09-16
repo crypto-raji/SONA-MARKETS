@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase.js';
 import { updatePosition } from './portfolioService.js';
-import { getAnchorWallet } from './walletService.js';
+import { getAnchorWallet, sendOnChainSolanaTransfer } from './walletService.js';
 
 const FEE_RATE = 0.001; // 0.1% platform fee
 const FEE_RECIPIENT = import.meta.env.VITE_PLATFORM_FEE_RECIPIENT || null;
@@ -184,12 +184,25 @@ export async function sendAsset({ symbol, amount, recipient, network }) {
   const user = requireAuth();
   const fee  = network === 'Solana' ? 0.000005 : estimateFee(amount);
 
+  let txHash = null;
+
   // For Solana sends, attempt real on-chain transfer
-  const txHash = network === 'Solana'
-    ? await tryOnChain(user.uid, (wallet, cs) =>
+  if (network === 'Solana') {
+    if (symbol === 'SOL') {
+      try {
+        txHash = await sendOnChainSolanaTransfer(user.uid, recipient, amount);
+        console.log('[Sona] On-chain SOL transfer confirmed:', txHash);
+      } catch (err) {
+        console.warn('[Sona] Direct SOL transfer fallback to contract/simulation:', err.message);
+      }
+    }
+    
+    if (!txHash) {
+      txHash = await tryOnChain(user.uid, (wallet, cs) =>
         cs.transferAsset({ symbol, amount, recipient, wallet })
-      )
-    : null;
+      );
+    }
+  }
 
   await updatePosition(user.uid, symbol, -(amount + fee), 0);
 

@@ -23,7 +23,12 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, googleProvider, db, isFirebaseConfigured } from './firebase.js';
-import { createHDWallet, restoreHDWallet } from './hdWalletService.js';
+import {
+  createHDWallet,
+  restoreHDWallet,
+  restoreHDWalletFromCipher,
+  getEncryptedMnemonic,
+} from './hdWalletService.js';
 
 const WALLET_SESSION_KEY = 'sona_wallet_session';
 
@@ -52,25 +57,18 @@ async function getOrCreateUserDoc(firebaseUser) {
   const ref = userRef(firebaseUser.uid);
   const uid = firebaseUser.uid;
 
-  // ── Step 1: always restore or create wallet from localStorage first ──────
-  // This is independent of Firestore so wallets are always available even
-  // if Firestore times out (ad blocker, network issue, etc.)
+  // ── Step 1: Check localStorage first ──────
   let wallets = { solana: null, ethereum: null, bnb: null, bitcoin: null };
   try {
-    const restored = await restoreHDWallet(uid);
-    if (restored?.addresses) {
-      wallets = restored.addresses;
-      console.log('[Sona] HD wallet restored from localStorage.');
-    } else {
-      const hd = await createHDWallet(uid);
-      wallets = hd.addresses;
-      console.log('[Sona] HD wallet created and stored in localStorage.');
+    const localRestored = await restoreHDWallet(uid);
+    if (localRestored?.addresses) {
+      wallets = localRestored.addresses;
     }
   } catch (e) {
-    console.error('[Sona] HD wallet generation failed:', e);
+    console.warn('[Sona] Local HD wallet check notice:', e);
   }
 
-  // ── Step 2: try Firestore with a 6s timeout ──────────────────────────────
+  // ── Step 2: Query Firestore profile ──────────────────────────────
   const firestoreTimeout = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('firestore_timeout')), 6000)
   );
@@ -80,33 +78,66 @@ async function getOrCreateUserDoc(firebaseUser) {
     snap = await Promise.race([getDoc(ref), firestoreTimeout]);
   } catch (e) {
     if (e.message === 'firestore_timeout') {
-      console.warn('[Sona] Firestore timed out — disable your ad blocker for localhost. Using local data.');
+      console.warn('[Sona] Firestore timed out. Using local wallet state.');
+      if (!wallets.solana) {
+        const hd = await createHDWallet(uid);
+        wallets = hd.addresses;
+      }
       return mapFirebaseUser(firebaseUser, { wallets });
     }
     throw e;
   }
 
+  // Existing user doc in Firestore
   if (snap.exists()) {
     const data = snap.data();
-    // Backfill wallets if existing doc doesn't have them (old accounts)
-    if (!data.wallets?.solana && wallets.solana) {
-      try { await updateDoc(ref, { wallets }); } catch {}
-      return { id: uid, ...data, wallets };
+    
+    // If Firestore has encrypted mnemonic and local didn't have it, restore it
+    if (data.encryptedMnemonic) {
+      const restored = await restoreHDWalletFromCipher(uid, data.encryptedMnemonic);
+      if (restored?.addresses) {
+        wallets = restored.addresses;
+      }
+    } else if (wallets.solana) {
+      // Local has mnemonic, backfill to Firestore
+      const cipher = getEncryptedMnemonic(uid);
+      if (cipher) {
+        try {
+          await updateDoc(ref, { encryptedMnemonic: cipher, wallets });
+        } catch {}
+      }
+    } else {
+      // Create wallet if neither local nor firestore had one
+      const hd = await createHDWallet(uid);
+      wallets = hd.addresses;
+      try {
+        await updateDoc(ref, { encryptedMnemonic: hd.encryptedMnemonic, wallets });
+      } catch {}
     }
-    return { id: uid, ...data };
+
+    return { id: uid, ...data, wallets: wallets.solana ? wallets : (data.wallets || wallets) };
   }
 
-  // ── Step 3: new user — write to Firestore ────────────────────────────────
+  // ── Step 3: Brand new user account ────────────────────────────────
+  if (!wallets.solana) {
+    const hd = await createHDWallet(uid);
+    wallets = hd.addresses;
+  }
+
+  const cipher = getEncryptedMnemonic(uid);
   const newUser = mapFirebaseUser(firebaseUser, {
     wallets,
+    encryptedMnemonic: cipher,
     walletProvider: 'sona',
     createdAt: serverTimestamp(),
   });
+
   try {
     await Promise.race([setDoc(ref, newUser), firestoreTimeout]);
   } catch {
-    console.warn('[Sona] Could not save new user to Firestore — ad blocker may be active.');
+    console.warn('[Sona] Could not save new user to Firestore.');
   }
+
   return newUser;
 }
 

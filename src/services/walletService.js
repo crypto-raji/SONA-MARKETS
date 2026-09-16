@@ -5,7 +5,15 @@
  * Uses mainnet-beta RPC from constants/network.js.
  * -----------------------------------------------------------------------
  */
-import { Connection, PublicKey, Keypair, Transaction } from '@solana/web3.js';
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  Transaction,
+  SystemProgram,
+  sendAndConfirmTransaction,
+  LAMPORTS_PER_SOL,
+} from '@solana/web3.js';
 import { getActiveNetwork, getRpcUrl, getUsdcMint } from '../constants/network.js';
 import { getSolanaKeypair } from './hdWalletService.js';
 
@@ -211,4 +219,39 @@ export async function getAnchorWallet(uid) {
       return txs.map((tx) => { tx.partialSign(keypair); return tx; });
     },
   };
+}
+
+/**
+ * Executes a direct on-chain transfer of native SOL from the user's HD wallet.
+ * Returns the confirmed transaction signature.
+ */
+export async function sendOnChainSolanaTransfer(uid, recipientAddress, amountSol) {
+  const secretKey = await getSolanaKeypair(uid);
+  if (!secretKey) {
+    throw new Error('Wallet key not available for signing. Please make sure you are signed in.');
+  }
+
+  const senderKeypair = Keypair.fromSecretKey(secretKey);
+  const recipientPubkey = new PublicKey(recipientAddress);
+  const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
+
+  const connection = new Connection(getRpcUrl(), 'confirmed');
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+
+  const tx = new Transaction({
+    recentBlockhash: blockhash,
+    feePayer: senderKeypair.publicKey,
+  }).add(
+    SystemProgram.transfer({
+      fromPubkey: senderKeypair.publicKey,
+      toPubkey: recipientPubkey,
+      lamports,
+    })
+  );
+
+  const signature = await sendAndConfirmTransaction(connection, tx, [senderKeypair], {
+    commitment: 'confirmed',
+  });
+
+  return signature;
 }

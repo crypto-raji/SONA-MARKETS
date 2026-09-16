@@ -127,6 +127,7 @@ export async function createHDWallet(uid) {
 
   return {
     mnemonic,  // shown to user once so they can back it up
+    encryptedMnemonic: cipherText,
     addresses: {
       solana:   solana.address,
       ethereum: ethereum.address,
@@ -137,16 +138,16 @@ export async function createHDWallet(uid) {
 }
 
 /**
- * Restore all chain addresses from the stored encrypted mnemonic.
- * Returns null if no wallet found for uid.
+ * Restore all chain addresses from a given encrypted mnemonic cipher text.
  */
-export async function restoreHDWallet(uid) {
-  const stored = localStorage.getItem(LS_MNEMONIC_KEY(uid));
-  if (!stored) return null;
-
+export async function restoreHDWalletFromCipher(uid, cipherText) {
+  if (!cipherText) return null;
   try {
-    const mnemonic = await decrypt(uid, stored);
+    const mnemonic = await decrypt(uid, cipherText);
     const seed     = await bip39.mnemonicToSeed(mnemonic);
+
+    // Also persist in local storage for fast access
+    localStorage.setItem(LS_MNEMONIC_KEY(uid), cipherText);
 
     return {
       addresses: {
@@ -156,9 +157,27 @@ export async function restoreHDWallet(uid) {
         bitcoin:  bitcoinAddressFromSeed(seed).address,
       },
     };
-  } catch {
+  } catch (err) {
+    console.error('[Sona HD Wallet] Decryption failed:', err);
     return null;
   }
+}
+
+/**
+ * Restore all chain addresses from the stored encrypted mnemonic in localStorage.
+ * Returns null if no wallet found for uid.
+ */
+export async function restoreHDWallet(uid) {
+  const stored = localStorage.getItem(LS_MNEMONIC_KEY(uid));
+  if (!stored) return null;
+  return restoreHDWalletFromCipher(uid, stored);
+}
+
+/**
+ * Get the encrypted mnemonic string for syncing to Firestore.
+ */
+export function getEncryptedMnemonic(uid) {
+  return localStorage.getItem(LS_MNEMONIC_KEY(uid)) || null;
 }
 
 /**

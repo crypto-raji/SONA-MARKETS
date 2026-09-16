@@ -77,7 +77,7 @@ class RootErrorBoundary extends Component {
                 fontSize: 14
               }}
               onClick={() => {
-                localStorage.clear();
+                this.setState({ hasError: false });
                 window.location.reload();
               }}
             >
