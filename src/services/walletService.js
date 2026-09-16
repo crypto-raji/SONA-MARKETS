@@ -110,6 +110,7 @@ export async function getWalletAddress(session) {
 const DEVNET_RPCS = [
   'https://api.devnet.solana.com',
   'https://rpc.ankr.com/solana_devnet',
+  'https://devnet.helius-rpc.com/?api-key=15319bf4-5b40-4958-ac71-6d44cf7b391e',
 ];
 const MAINNET_RPCS = [
   'https://api.mainnet-beta.solana.com',
@@ -152,40 +153,53 @@ async function fetchSolBalance(address) {
   return { lamports: 0, rpc: null };
 }
 
-async function fetchSplTokens(address, rpc) {
-  if (!rpc) return [];
-  const tokenTotals = {};
+async function fetchSplTokens(address, primaryRpc) {
+  const rpcs = primaryRpc ? [primaryRpc, ...rpcList().filter(r => r !== primaryRpc)] : rpcList();
 
-  await Promise.allSettled(
-    TOKEN_PROGRAMS.map(async (progId) => {
-      try {
-        const result = await rpcCall(
-          rpc,
-          'getTokenAccountsByOwner',
-          [
-            address,
-            { programId: progId },
-            { encoding: 'jsonParsed', commitment: 'confirmed' },
-          ],
-          8000
-        );
-        for (const { account } of result?.value || []) {
-          const info   = account?.data?.parsed?.info;
-          const mint   = info?.mint;
-          const amount = info?.tokenAmount?.uiAmount ?? 0;
-          const symbol = KNOWN_SOLANA_MINTS[mint] || (mint === getUsdcMint() ? 'USDC' : null);
-          if (symbol && amount > 0) {
-            tokenTotals[symbol] = (tokenTotals[symbol] || 0) + amount;
-          }
-        }
-      } catch { /* try next program */ }
-    })
-  );
+  for (const rpc of rpcs) {
+    try {
+      const tokenTotals = {};
+      let anySuccess = false;
 
-  return Object.entries(tokenTotals).map(([symbol, amount]) => ({
-    symbol,
-    amount: Number(amount.toFixed(6)),
-  }));
+      await Promise.allSettled(
+        TOKEN_PROGRAMS.map(async (progId) => {
+          try {
+            const result = await rpcCall(
+              rpc,
+              'getTokenAccountsByOwner',
+              [
+                address,
+                { programId: progId },
+                { encoding: 'jsonParsed', commitment: 'confirmed' },
+              ],
+              8000
+            );
+            if (result && Array.isArray(result.value)) {
+              anySuccess = true;
+              for (const { account } of result.value) {
+                const info   = account?.data?.parsed?.info;
+                const mint   = info?.mint;
+                const amount = info?.tokenAmount?.uiAmount ?? 0;
+                const symbol = KNOWN_SOLANA_MINTS[mint] || (mint === getUsdcMint() ? 'USDC' : null);
+                if (symbol && amount > 0) {
+                  tokenTotals[symbol] = (tokenTotals[symbol] || 0) + amount;
+                }
+              }
+            }
+          } catch { /* try next program */ }
+        })
+      );
+
+      if (anySuccess) {
+        return Object.entries(tokenTotals).map(([symbol, amount]) => ({
+          symbol,
+          amount: Number(amount.toFixed(6)),
+        }));
+      }
+    } catch { /* try next RPC */ }
+  }
+
+  return [];
 }
 
 export async function getWalletBalance(address) {

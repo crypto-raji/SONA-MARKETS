@@ -45,7 +45,9 @@ export default function BuyModal({ asset, open, onClose }) {
   const onChainSol = payWithSymbol === 'SOL' ? (portfolio?.availableBalance || 0) : 0;
   const availablePay = Math.max(
     payHolding?.quantity || 0,
-    (onChainToken?.amount || 0) + onChainSol
+    payWithSymbol === 'SOL'
+      ? Math.max(onChainSol, onChainToken?.amount || 0)
+      : (onChainToken?.amount || 0)
   );
 
   const usdValue = (Number(amount) || 0) * payPrice;

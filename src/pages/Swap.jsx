@@ -31,6 +31,10 @@ export default function Swap() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
+    refreshPortfolio(true);
+  }, [refreshPortfolio]);
+
+  useEffect(() => {
     let active = true;
     marketService.getAssetPrice(fromSymbol).then((q) => active && setFromQuote(q));
     return () => { active = false; };
@@ -51,7 +55,9 @@ export default function Swap() {
   const onChainSol = fromSymbol === 'SOL' ? (portfolio?.availableBalance || 0) : 0;
   const available = Math.max(
     fromHolding?.quantity || 0,
-    (onChainToken?.amount || 0) + onChainSol
+    fromSymbol === 'SOL'
+      ? Math.max(onChainSol, onChainToken?.amount || 0)
+      : (onChainToken?.amount || 0)
   );
 
   const usdValue = (Number(fromAmount) || 0) * fromPrice;
