@@ -108,9 +108,9 @@ export default function Transactions() {
     }
   }
   merged.sort((a, b) => {
-    const ta = a.createdAt?.toDate?.() || new Date(0);
-    const tb = b.createdAt?.toDate?.() || new Date(0);
-    return tb - ta;
+    const timeA = new Date(a.timestamp || a.createdAt?.toDate?.() || 0).getTime();
+    const timeB = new Date(b.timestamp || b.createdAt?.toDate?.() || 0).getTime();
+    return timeB - timeA;
   });
 
   const filtered = merged.filter((t) => filter === 'All' || t.type === filter);

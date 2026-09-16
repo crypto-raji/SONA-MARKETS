@@ -127,20 +127,14 @@ export async function buyAsset({ symbol, price, payWithSymbol, payAmount, payPri
   const fee      = estimateFee(usdValue);
   const quantity = Number(((usdValue - fee) / price).toFixed(6));
 
-  // Attempt on-chain settlement; falls back to Firestore simulation on failure
-  const txHash = await tryOnChain(user.uid, (wallet, cs) =>
+  // Attempt on-chain settlement; falls back to simulated execution on failure
+  let txHash = await tryOnChain(user.uid, (wallet, cs) =>
     cs.buyAsset({ symbol, payWithSymbol, payAmount, assetPrice: price, solPriceUsd: payPrice, wallet })
   );
 
-  if (!txHash) {
-    // Firestore simulation: update positions locally
-    await updatePosition(user.uid, payWithSymbol, -payAmount, payPrice);
-    await updatePosition(user.uid, symbol, quantity, price);
-  } else {
-    // On-chain succeeded: only update Firestore portfolio mirror
-    await updatePosition(user.uid, payWithSymbol, -payAmount, payPrice);
-    await updatePosition(user.uid, symbol, quantity, price);
-  }
+  // Always update positions so local portfolio state & holdings are strictly updated
+  await updatePosition(user.uid, payWithSymbol, -payAmount, payPrice);
+  await updatePosition(user.uid, symbol, quantity, price);
 
   return recordTransaction(user.uid, {
     type: 'BUY',
@@ -154,6 +148,7 @@ export async function buyAsset({ symbol, price, payWithSymbol, payAmount, payPri
     status: 'Completed',
     txHash: txHash || null,
     onChain: Boolean(txHash),
+    network: 'Solana',
   });
 }
 
@@ -172,7 +167,7 @@ export async function sellAsset({ symbol, quantity, price, receiveWithSymbol, re
   const fee           = estimateFee(usdValue);
   const receiveAmount = Number(((usdValue - fee) / receivePrice).toFixed(6));
 
-  const txHash = await tryOnChain(user.uid, (wallet, cs) =>
+  let txHash = await tryOnChain(user.uid, (wallet, cs) =>
     cs.sellAsset({ symbol, quantity, assetPrice: price, receiveWithSymbol, wallet })
   );
 
@@ -191,6 +186,7 @@ export async function sellAsset({ symbol, quantity, price, receiveWithSymbol, re
     status: 'Completed',
     txHash: txHash || null,
     onChain: Boolean(txHash),
+    network: 'Solana',
   });
 }
 
@@ -201,7 +197,7 @@ export async function swapAsset({ fromSymbol, fromAmount, fromPrice, toSymbol, t
   const fee      = estimateFee(usdValue);
   const toAmount = Number(((usdValue - fee) / toPrice).toFixed(6));
 
-  const txHash = await tryOnChain(user.uid, (wallet, cs) =>
+  let txHash = await tryOnChain(user.uid, (wallet, cs) =>
     cs.swapAsset({ fromSymbol, fromAmount, fromPrice, toSymbol, toPrice, wallet })
   );
 
@@ -219,38 +215,46 @@ export async function swapAsset({ fromSymbol, fromAmount, fromPrice, toSymbol, t
     status: 'Completed',
     txHash: txHash || null,
     onChain: Boolean(txHash),
+    network: 'Solana',
   });
 }
 
 // ── Send ──────────────────────────────────────────────────────────────────────
-export async function sendAsset({ symbol, amount, recipient, network }) {
+export async function sendAsset({ symbol, amount, recipient, network = 'Solana' }) {
   if (!recipient || recipient.length < 8) throw new Error('Invalid recipient address.');
   if (!amount || amount <= 0)            throw new Error('Invalid amount.');
 
   const user = requireAuth();
   const fee  = network === 'Solana' ? 0.000005 : estimateFee(amount);
+  const session = getWalletSession();
+  const walletProvider = session?.walletProvider || 'sona';
 
   let txHash = null;
 
   // For Solana sends, attempt real on-chain transfer
   if (network === 'Solana') {
-    if (symbol === 'SOL') {
+    try {
+      txHash = await sendOnChainSolanaTransfer({
+        uid: user.uid,
+        recipientAddress: recipient,
+        amount,
+        symbol,
+        walletProvider,
+      });
+      console.log('[Sona] On-chain Solana transfer confirmed:', txHash);
+    } catch (err) {
+      console.warn('[Sona] Direct transfer fallback / note:', err.message);
+      // If direct transfer failed, attempt via contract
       try {
-        txHash = await sendOnChainSolanaTransfer(user.uid, recipient, amount);
-        console.log('[Sona] On-chain SOL transfer confirmed:', txHash);
-      } catch (err) {
-        console.warn('[Sona] Direct SOL transfer fallback to contract/simulation:', err.message);
-      }
-    }
-    
-    if (!txHash) {
-      txHash = await tryOnChain(user.uid, (wallet, cs) =>
-        cs.transferAsset({ symbol, amount, recipient, wallet })
-      );
+        txHash = await tryOnChain(user.uid, (wallet, cs) =>
+          cs.transferAsset({ symbol, amount, recipient, wallet })
+        );
+      } catch {}
     }
   }
 
-  await updatePosition(user.uid, symbol, -(amount + fee), 0);
+  // Deduct from position and portfolio mirror
+  await updatePosition(user.uid, symbol, -(amount + (symbol === 'SOL' ? fee : 0)), 0);
 
   return recordTransaction(user.uid, {
     type: 'SEND',

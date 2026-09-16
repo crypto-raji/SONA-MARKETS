@@ -93,6 +93,23 @@ export function getUsdcMint() {
 
 /** Solscan link with the correct cluster param. */
 export function getExplorerUrl(txHash) {
-  const net = SOLANA_NETWORKS[_active];
-  return `${net.explorerBase}/tx/${txHash}${net.explorerCluster}`;
+  return getSolscanUrl(txHash);
+}
+
+export function getSolscanUrl(txHash) {
+  if (!txHash) return '#';
+  const isDev = _active !== 'mainnet-beta';
+  return `https://solscan.io/tx/${txHash}${isDev ? '?cluster=devnet' : ''}`;
+}
+
+export function getSolanaExplorerUrl(txHash) {
+  if (!txHash) return '#';
+  const isDev = _active !== 'mainnet-beta';
+  return `https://explorer.solana.com/tx/${txHash}${isDev ? '?cluster=devnet' : ''}`;
+}
+
+export function getAddressExplorerUrl(address) {
+  if (!address) return '#';
+  const isDev = _active !== 'mainnet-beta';
+  return `https://solscan.io/account/${address}${isDev ? '?cluster=devnet' : ''}`;
 }

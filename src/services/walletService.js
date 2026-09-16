@@ -280,36 +280,195 @@ export async function getAnchorWallet(uid) {
 }
 
 /**
- * Executes a direct on-chain transfer of native SOL from the user's HD wallet.
+ * Executes a direct on-chain transfer of native SOL or SPL token from the user's wallet.
+ * Supports both Sona HD Keypairs (embedded wallet) and Browser Extension Wallets (Phantom/Solflare/Backpack).
  * Returns the confirmed transaction signature.
  */
-export async function sendOnChainSolanaTransfer(uid, recipientAddress, amountSol) {
+export async function sendOnChainSolanaTransfer({
+  uid,
+  recipientAddress,
+  amount,
+  symbol = 'SOL',
+  walletProvider = 'sona',
+}) {
+  const recipientPubkey = new PublicKey(recipientAddress);
+  const connection = new Connection(getRpcUrl(), 'confirmed');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+  // ── Browser extension wallet (Phantom, Solflare, Backpack) ──────────
+  if (walletProvider === 'phantom' && window?.phantom?.solana) {
+    const provider = window.phantom.solana;
+    if (!provider.publicKey) await provider.connect();
+    const senderPubkey = provider.publicKey;
+
+    const tx = new Transaction({
+      recentBlockhash: blockhash,
+      feePayer: senderPubkey,
+    });
+
+    if (symbol === 'SOL') {
+      const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: senderPubkey,
+          toPubkey: recipientPubkey,
+          lamports,
+        })
+      );
+    } else {
+      // SPL token transfer (USDC or other token)
+      const mintAddress = getUsdcMint();
+      const mintPubkey = new PublicKey(mintAddress);
+      const senderAta = await getAssociatedTokenAddress(mintPubkey, senderPubkey);
+      const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+
+      const { createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction } = await import('@solana/spl-token');
+      
+      tx.add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          senderPubkey,
+          recipientAta,
+          recipientPubkey,
+          mintPubkey
+        ),
+        createTransferInstruction(
+          senderAta,
+          recipientAta,
+          senderPubkey,
+          Math.round(amount * 1_000_000)
+        )
+      );
+    }
+
+    const { signature } = await provider.signAndSendTransaction(tx);
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    return signature;
+  }
+
+  if (walletProvider === 'solflare' && window?.solflare) {
+    const provider = window.solflare;
+    if (!provider.publicKey) await provider.connect();
+    const senderPubkey = provider.publicKey;
+
+    const tx = new Transaction({
+      recentBlockhash: blockhash,
+      feePayer: senderPubkey,
+    });
+
+    if (symbol === 'SOL') {
+      const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: senderPubkey,
+          toPubkey: recipientPubkey,
+          lamports,
+        })
+      );
+    } else {
+      const mintAddress = getUsdcMint();
+      const mintPubkey = new PublicKey(mintAddress);
+      const senderAta = await getAssociatedTokenAddress(mintPubkey, senderPubkey);
+      const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+
+      const { createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction } = await import('@solana/spl-token');
+
+      tx.add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          senderPubkey,
+          recipientAta,
+          recipientPubkey,
+          mintPubkey
+        ),
+        createTransferInstruction(
+          senderAta,
+          recipientAta,
+          senderPubkey,
+          Math.round(amount * 1_000_000)
+        )
+      );
+    }
+
+    const signedTx = await provider.signTransaction(tx);
+    const signature = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    return signature;
+  }
+
+  // ── Sona Embedded HD Wallet ─────────────────────────────────────────
   const secretKey = await getSolanaKeypair(uid);
   if (!secretKey) {
     throw new Error('Wallet key not available for signing. Please make sure you are signed in.');
   }
 
   const senderKeypair = Keypair.fromSecretKey(secretKey);
-  const recipientPubkey = new PublicKey(recipientAddress);
-  const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
-
-  const connection = new Connection(getRpcUrl(), 'confirmed');
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
 
   const tx = new Transaction({
     recentBlockhash: blockhash,
     feePayer: senderKeypair.publicKey,
-  }).add(
-    SystemProgram.transfer({
-      fromPubkey: senderKeypair.publicKey,
-      toPubkey: recipientPubkey,
-      lamports,
-    })
-  );
+  });
+
+  if (symbol === 'SOL') {
+    const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: senderKeypair.publicKey,
+        toPubkey: recipientPubkey,
+        lamports,
+      })
+    );
+  } else {
+    const mintAddress = getUsdcMint();
+    const mintPubkey = new PublicKey(mintAddress);
+    const senderAta = await getAssociatedTokenAddress(mintPubkey, senderKeypair.publicKey);
+    const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+
+    const { createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction } = await import('@solana/spl-token');
+
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        senderKeypair.publicKey,
+        recipientAta,
+        recipientPubkey,
+        mintPubkey
+      ),
+      createTransferInstruction(
+        senderAta,
+        recipientAta,
+        senderKeypair.publicKey,
+        Math.round(amount * 1_000_000)
+      )
+    );
+  }
 
   const signature = await sendAndConfirmTransaction(connection, tx, [senderKeypair], {
     commitment: 'confirmed',
   });
 
   return signature;
+}
+
+/**
+ * Request 1 SOL airdrop on Solana Devnet.
+ * Throws friendly error if cluster rate limits or user is on mainnet.
+ */
+export async function requestDevnetAirdrop(address) {
+  if (getActiveNetwork() === 'mainnet-beta') {
+    throw new Error('Airdrops are only available on Solana Devnet.');
+  }
+  if (!address || address.startsWith('DEMO')) {
+    throw new Error('Invalid address for airdrop.');
+  }
+
+  const connection = new Connection(getRpcUrl(), 'confirmed');
+  const pubkey = new PublicKey(address);
+
+  try {
+    const signature = await connection.requestAirdrop(pubkey, 1 * LAMPORTS_PER_SOL);
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    return { success: true, signature };
+  } catch (err) {
+    console.error('[Sona] Devnet airdrop failed:', err);
+    throw new Error(err.message?.includes('429') ? 'Devnet faucet rate limit reached. Try again in 1 minute.' : 'Could not request airdrop. Please try again or use Solana Devnet Faucet.');
+  }
 }

@@ -219,33 +219,80 @@ export function ProcessingBlock() {
 }
 
 export function ResultBlock({ result, successLabel, onDone }) {
-  const txHash = result?.tx?.txHash;
+  const txHash = result?.tx?.txHash || result?.txHash;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!txHash) return;
+    navigator.clipboard.writeText(txHash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
   return (
-    <div style={{ textAlign: 'center', padding: 'var(--space-5) 0' }}>
+    <div style={{ textAlign: 'center', padding: 'var(--space-4) 0' }}>
       <div style={{
-        fontSize: 32, marginBottom: 'var(--space-3)',
+        width: 52, height: 52, borderRadius: 'var(--radius-pill)',
+        background: result?.success ? 'var(--color-positive-soft)' : 'var(--color-negative-soft)',
         color: result?.success ? 'var(--color-positive)' : 'var(--color-negative)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 26, margin: '0 auto var(--space-3)',
       }}>
         {result?.success ? '✓' : '✕'}
       </div>
-      <h3 style={{ fontSize: 16, marginBottom: 4 }}>{result?.success ? 'Order complete' : 'Order failed'}</h3>
+      <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>
+        {result?.success ? 'Order Executed Successfully' : 'Order Failed'}
+      </h3>
       <p className="text-secondary" style={{ fontSize: 13, marginBottom: txHash ? 'var(--space-3)' : 'var(--space-5)' }}>
         {result?.success ? successLabel : result?.error || 'Something went wrong. Please try again.'}
       </p>
+
       {txHash && (
-        <a
-          href={`https://solscan.io/tx/${txHash}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: 12, color: 'var(--color-accent)', textDecoration: 'none',
-            marginBottom: 'var(--space-5)',
-          }}
-        >
-          View on Solana Explorer ↗
-        </a>
+        <div className="card" style={{
+          padding: 'var(--space-3)', textAlign: 'left', marginBottom: 'var(--space-4)',
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span className="text-tertiary" style={{ fontSize: 11, fontWeight: 600 }}>TRANSACTION SIGNATURE</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-positive)' }}>CONFIRMED ON-CHAIN</span>
+          </div>
+          <div style={{
+            fontSize: 11, fontFamily: 'var(--font-mono)', wordBreak: 'break-all',
+            background: 'var(--color-bg)', padding: '6px 8px', borderRadius: 6, marginBottom: 8,
+          }}>
+            {txHash}
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleCopy}
+              style={{ flex: 1, fontSize: 11 }}
+            >
+              {copied ? '✓ Copied!' : '📋 Copy Hash'}
+            </button>
+            <a
+              href={`https://solscan.io/tx/${txHash}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary btn-sm"
+              style={{ flex: 1, fontSize: 11, textDecoration: 'none', textAlign: 'center' }}
+            >
+              Solscan ↗
+            </a>
+            <a
+              href={`https://explorer.solana.com/tx/${txHash}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary btn-sm"
+              style={{ flex: 1, fontSize: 11, textDecoration: 'none', textAlign: 'center' }}
+            >
+              Explorer ↗
+            </a>
+          </div>
+        </div>
       )}
+
       <button className="btn btn-primary btn-block" onClick={onDone}>Done</button>
     </div>
   );
