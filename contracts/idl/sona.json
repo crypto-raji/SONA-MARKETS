@@ -1,0 +1,588 @@
+{
+  "address": "9M6nZdegpRZWAsBKyJ8u5Dkh4XCrqv7TVHkjmKo6CXr1",
+  "metadata": {
+    "name": "sona",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "initializeConfig",
+      "discriminator": [
+        208,
+        127,
+        21,
+        1,
+        194,
+        190,
+        196,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true
+        },
+        {
+          "name": "usdcMint"
+        },
+        {
+          "name": "usdcVault",
+          "writable": true
+        },
+        {
+          "name": "feeRecipient"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "systemProgram"
+        },
+        {
+          "name": "rent"
+        }
+      ],
+      "args": [
+        {
+          "name": "feeBps",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "updateConfig",
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "feeBps",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "paused",
+          "type": {
+            "option": "bool"
+          }
+        }
+      ]
+    },
+    {
+      "name": "initializePortfolio",
+      "discriminator": [
+        122,
+        177,
+        206,
+        169,
+        129,
+        85,
+        26,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "portfolio",
+          "writable": true
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "buyAsset",
+      "discriminator": [
+        197,
+        37,
+        177,
+        1,
+        180,
+        23,
+        175,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "portfolio",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "userUsdcAccount",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "usdcVault",
+          "writable": true,
+          "optional": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "name": "payWithUsdc",
+          "type": "bool"
+        },
+        {
+          "name": "payAmount",
+          "type": "u64"
+        },
+        {
+          "name": "assetPrice",
+          "type": "u64"
+        },
+        {
+          "name": "payAssetPrice",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "sellAsset",
+      "discriminator": [
+        234,
+        62,
+        61,
+        70,
+        99,
+        53,
+        89,
+        20
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "portfolio",
+          "writable": true
+        },
+        {
+          "name": "position",
+          "writable": true
+        },
+        {
+          "name": "usdcVault",
+          "writable": true
+        },
+        {
+          "name": "userUsdcAccount",
+          "writable": true
+        },
+        {
+          "name": "feeRecipient"
+        },
+        {
+          "name": "feeRecipientTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "type": "u64"
+        },
+        {
+          "name": "assetPrice",
+          "type": "u64"
+        },
+        {
+          "name": "receiveAssetPrice",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "swapAsset",
+      "discriminator": [
+        229,
+        93,
+        34,
+        169,
+        80,
+        78,
+        56,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "portfolio",
+          "writable": true
+        },
+        {
+          "name": "fromPosition",
+          "writable": true
+        },
+        {
+          "name": "toPosition",
+          "writable": true
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "fromSymbol",
+          "type": "string"
+        },
+        {
+          "name": "fromAmount",
+          "type": "u64"
+        },
+        {
+          "name": "fromPrice",
+          "type": "u64"
+        },
+        {
+          "name": "toSymbol",
+          "type": "string"
+        },
+        {
+          "name": "toPrice",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "transferToken",
+      "discriminator": [
+        219,
+        17,
+        122,
+        53,
+        237,
+        171,
+        232,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "tokenMint"
+        },
+        {
+          "name": "senderTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "recipientTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "transferSol",
+      "discriminator": [
+        78,
+        10,
+        236,
+        247,
+        109,
+        117,
+        21,
+        76
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "systemProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "lamports",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Portfolio",
+      "discriminator": [
+        94,
+        158,
+        71,
+        245,
+        122,
+        102,
+        110,
+        225
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "SymbolTooLong",
+      "msg": "Symbol exceeds 10-byte maximum"
+    },
+    {
+      "code": 6001,
+      "name": "InsufficientBalance",
+      "msg": "Insufficient balance for this operation"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidAmount",
+      "msg": "Amount must be greater than zero"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidPrice",
+      "msg": "Price must be greater than zero"
+    },
+    {
+      "code": 6004,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6005,
+      "name": "Paused",
+      "msg": "Program is paused — try again later"
+    },
+    {
+      "code": 6006,
+      "name": "SymbolMismatch",
+      "msg": "Symbol on position account does not match instruction symbol"
+    },
+    {
+      "code": 6007,
+      "name": "SameAsset",
+      "msg": "Cannot swap an asset for itself"
+    },
+    {
+      "code": 6008,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not the program authority"
+    },
+    {
+      "code": 6009,
+      "name": "WrongMint",
+      "msg": "USDC mint does not match the configured mint"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "feeRecipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "feeBps",
+            "type": "u64"
+          },
+          {
+            "name": "usdcMint",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Portfolio",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "positionCount",
+            "type": "u8"
+          },
+          {
+            "name": "totalDepositedUsdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "symbol",
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "avgPrice",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -34,7 +34,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 
-import IDL from '../target/idl/sona.json';
+import IDL from '../idl/sona.json';
 
 // ─── Scaling constants (must match state.rs) ──────────────────────────────────
 export const QUANTITY_SCALE = 1_000_000;

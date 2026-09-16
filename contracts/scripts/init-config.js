@@ -20,7 +20,9 @@ import { AnchorProvider, Program, Wallet, BN } from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const IDL_PATH  = path.join(__dirname, '../target/idl/sona.json');
+const idlPrimary = path.join(__dirname, '../idl/sona.json');
+const idlFallback = path.join(__dirname, '../target/idl/sona.json');
+const IDL_PATH = fs.existsSync(idlPrimary) ? idlPrimary : idlFallback;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
