@@ -8,7 +8,7 @@
  * 4. In Firestore Database, create a database (start in test mode for now).
  * 5. Paste all VITE_FIREBASE_* values into your .env file.
  */
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import {
   initializeFirestore,
@@ -25,27 +25,55 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const missingKeys = Object.entries(firebaseConfig)
-  .filter(([, v]) => !v)
-  .map(([k]) => k);
+const hasValidConfig = Boolean(
+  firebaseConfig.apiKey &&
+  typeof firebaseConfig.apiKey === 'string' &&
+  !firebaseConfig.apiKey.includes('your-firebase') &&
+  firebaseConfig.projectId &&
+  !firebaseConfig.projectId.includes('your-project')
+);
 
-if (missingKeys.length > 0) {
-  console.error(
-    '[Firebase] Missing env vars:', missingKeys,
-    '\nCopy your firebaseConfig from console.firebase.google.com into .env'
-  );
+export const isFirebaseConfigured = hasValidConfig;
+
+if (!hasValidConfig) {
+  console.info('[Firebase] Credentials not detected or incomplete. App is running with resilient offline/demo fallback.');
 }
 
-const app = initializeApp(firebaseConfig);
+let app;
+if (getApps().length > 0) {
+  app = getApp();
+} else if (hasValidConfig) {
+  app = initializeApp(firebaseConfig);
+} else {
+  // Safe dummy initialization so top-level imports and hooks never throw at module load
+  app = initializeApp({
+    apiKey: 'AIzaSyDemoFallbackKeyOnly0000000000000',
+    authDomain: 'sona-demo.firebaseapp.com',
+    projectId: 'sona-demo-app',
+    storageBucket: 'sona-demo.appspot.com',
+    messagingSenderId: '123456789012',
+    appId: '1:123456789012:web:0000000000000000000000',
+  });
+}
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Persistent IndexedDB cache: Firestore data is available instantly on return
-// visits without a network round-trip — the SDK serves from cache and then
-// syncs in the background. Works across multiple browser tabs.
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
+let firestoreInstance;
+try {
+  firestoreInstance = hasValidConfig
+    ? initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      })
+    : initializeFirestore(app, {});
+} catch (e) {
+  try {
+    firestoreInstance = initializeFirestore(app, {});
+  } catch {
+    firestoreInstance = null;
+  }
+}
+
+export const db = firestoreInstance;

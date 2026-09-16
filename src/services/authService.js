@@ -22,7 +22,7 @@ import {
   updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { auth, googleProvider, db } from './firebase.js';
+import { auth, googleProvider, db, isFirebaseConfigured } from './firebase.js';
 import { createHDWallet, restoreHDWallet } from './hdWalletService.js';
 
 const WALLET_SESSION_KEY = 'sona_wallet_session';
@@ -117,8 +117,36 @@ async function getOrCreateUserDoc(firebaseUser) {
  * Returns the app user object.
  */
 export async function signInWithGoogle() {
+  if (!isFirebaseConfigured) {
+    throw new Error('Firebase configuration missing. Please add VITE_FIREBASE_API_KEY to your Railway environment variables.');
+  }
   const result = await signInWithPopup(auth, googleProvider);
   return getOrCreateUserDoc(result.user);
+}
+
+/**
+ * Sign in as a demo user for exploring the platform.
+ */
+export async function signInDemo() {
+  const demoUser = {
+    id: 'demo_user',
+    name: 'Demo Trader',
+    email: 'demo@sona.market',
+    photoURL: null,
+    authMethod: 'demo',
+    pinIsSet: true,
+    wallets: {
+      solana: 'DemoSoL1111111111111111111111111111111111111',
+      ethereum: '0x000000000000000000000000000000000000dEaD',
+      bnb: '0x000000000000000000000000000000000000dEaD',
+      bitcoin: 'bc1qdemo0000000000000000000000000000000000',
+    },
+    walletProvider: 'sona',
+  };
+  try {
+    localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(demoUser));
+  } catch {}
+  return demoUser;
 }
 
 /**
@@ -241,6 +269,11 @@ export async function getCurrentUser() {
  * Also checks for a persisted wallet session when no Firebase user is present.
  */
 export function onAuthStateChanged(callback) {
+  if (!isFirebaseConfigured) {
+    const walletSession = getWalletSession();
+    callback(walletSession || null);
+    return () => {};
+  }
   return firebaseOnAuthStateChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) {
       // Check for wallet session before reporting signed-out
@@ -248,8 +281,12 @@ export function onAuthStateChanged(callback) {
       callback(walletSession || null);
       return;
     }
-    const user = await getOrCreateUserDoc(firebaseUser);
-    callback(user);
+    try {
+      const user = await getOrCreateUserDoc(firebaseUser);
+      callback(user);
+    } catch {
+      callback(mapFirebaseUser(firebaseUser));
+    }
   });
 }
 

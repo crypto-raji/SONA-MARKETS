@@ -337,6 +337,34 @@ const CSS = `
   }
 
 
+  .lp-demo-btn {
+    width: 100%;
+    height: 44px;
+    margin-top: 12px;
+    background: rgba(201, 145, 58, 0.08);
+    border: 1px solid rgba(201, 145, 58, 0.28);
+    border-radius: 12px;
+    color: #E2B05E;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.18s ease;
+  }
+  .lp-demo-btn:hover:not(:disabled) {
+    background: rgba(201, 145, 58, 0.16);
+    border-color: rgba(201, 145, 58, 0.45);
+    color: #F0C478;
+    transform: translateY(-1px);
+  }
+  .lp-demo-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   /* ── Responsive ── */
   @media (max-width: 768px) {
     .lp-root { flex-direction: column; }
@@ -379,7 +407,7 @@ function TickerRow({ items, direction }) {
 }
 
 export default function Login() {
-  const { signInWithGoogle, signInWithWallet } = useAuth();
+  const { signInWithGoogle, signInWithWallet, signInDemo } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
 
@@ -390,6 +418,18 @@ export default function Login() {
       await signInWithGoogle();
     } catch (e) {
       setError(e.message || 'Sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDemo() {
+    setError(null);
+    setLoading(true);
+    try {
+      await signInDemo();
+    } catch (e) {
+      setError('Failed to enter demo mode.');
     } finally {
       setLoading(false);
     }
@@ -481,6 +521,20 @@ export default function Login() {
             </div>
 
             <WalletConnectModal onConnect={handleWalletConnect} disabled={loading} />
+
+            {/* ── Instant demo mode ── */}
+            <button
+              type="button"
+              className="lp-demo-btn"
+              onClick={handleDemo}
+              disabled={loading}
+              title="Explore the trading platform in instant preview / demo mode"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+              </svg>
+              Explore in Demo Mode
+            </button>
 
             <div className="lp-divider" style={{ margin: '24px 0 16px' }}><span>What you get</span></div>
 

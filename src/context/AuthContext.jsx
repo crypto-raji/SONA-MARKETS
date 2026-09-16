@@ -34,6 +34,12 @@ export function AuthProvider({ children }) {
     return user;
   }, []);
 
+  const signInDemo = useCallback(async () => {
+    const user = await authService.signInDemo();
+    setUser(user);
+    return user;
+  }, []);
+
   const connectWalletSession = useCallback(async (address, provider) => {
     const updated = await authService.connectWalletAccount(address, provider);
     setUser(updated);
@@ -53,7 +59,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, signInWithGoogle, signInWithWallet, connectWalletSession, signOut, refreshUser, setUser }}
+      value={{ user, loading, signInWithGoogle, signInWithWallet, signInDemo, connectWalletSession, signOut, refreshUser, setUser }}
     >
       {children}
     </AuthContext.Provider>

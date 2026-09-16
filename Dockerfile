@@ -26,8 +26,9 @@ RUN npm install -g serve
 # Copy built frontend assets
 COPY --from=builder /app/dist ./dist
 
-# Default port (overridden by Railway $PORT)
+# Railway default port
+EXPOSE 8080
 EXPOSE 3000
 
 # Start static server binding to 0.0.0.0 and dynamic $PORT with SPA fallback (-s)
-CMD ["sh", "-c", "serve -s dist -l tcp://0.0.0.0:${PORT:-3000}"]
+CMD ["sh", "-c", "serve -s dist -l tcp://0.0.0.0:${PORT:-8080}"]
