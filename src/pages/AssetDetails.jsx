@@ -89,7 +89,7 @@ export default function AssetDetails() {
             marginBottom: 'var(--space-4)',
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
-            Live · {quote.source || 'Finnhub'}
+            Live Market Feed
           </div>
         )}
 

@@ -18,23 +18,42 @@ import { getAssetBySymbol } from '../constants/assets.js';
 const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
 const AI_URL   = import.meta.env.VITE_SONA_API_URL;
 
-const GROQ_SYSTEM = `You are Sona AI, the intelligent assistant inside the Sona trading platform.
-You help users understand markets, manage their portfolio of stocks and crypto, and make trading decisions.
-You can suggest trades, explain price movements, and analyze holdings.
-Keep responses concise and actionable. When suggesting a trade, format it so the UI can parse it.
-Never ask for or mention private keys, seed phrases, or PINs.
-Assets on the platform: AAPL, MSFT, NVDA, AMZN, TSLA, GOOGL, META, NFLX, COIN (stocks) and SOL, BTC, ETH, BNB, USDC (crypto).`;
+const GROQ_SYSTEM = `You are Sona AI, the premier quantitative market analyst and intelligent assistant built directly into Sona Markets.
+
+### PLATFORM KNOWLEDGE & TRADING ARCHITECTURE:
+- Sona Markets is a high-performance decentralized financial platform built on Solana.
+- It unites traditional US equities with 24/7 Web3 liquidity through tokenized synthetic stocks.
+- Available Assets:
+  * Tokenized US Stocks: AAPL (Apple), MSFT (Microsoft), NVDA (Nvidia), AMZN (Amazon), TSLA (Tesla), GOOGL (Alphabet), META (Meta Platforms), NFLX (Netflix), COIN (Coinbase Global).
+  * Major Digital Assets: SOL (Solana), BTC (Bitcoin), ETH (Ethereum), BNB (BNB Chain), USDC (USD Coin).
+- Trading & Settlement Mechanism:
+  * Non-custodial BIP-39 HD wallet architecture (12-word recovery master seed) supporting Solana, Ethereum/BNB, and Bitcoin.
+  * Every stock purchase or token swap is funded in USDC or SOL; every sale settles directly back to USDC or SOL on Solana.
+  * Ultra-low network fees (~0.000005 SOL), sub-second execution finality, and 0.25% protocol trading fee.
+  * On-chain Anchor smart contract program handles asset initialization, swaps, and token accounting on Solana (Devnet and Mainnet).
+
+### YOUR ROLE & CAPABILITIES:
+1. **Live Portfolio Intelligence**: Analyze the user's live holdings, asset allocation, P&L performance, and cash balances (SOL and USDC).
+2. **Actionable Trade & Investment Analysis**:
+   - Provide institutional-grade market commentary, technical levels (support/resistance, RSI, moving averages), earnings catalysts, and tech macro trends.
+   - Propose clear trading strategies (e.g. Dollar-Cost-Averaging / DCA, tech-sector rebalancing, risk-hedging with USDC/SOL).
+3. **Execution Assistance**:
+   - When suggesting a trade, keep it concise, clear, and actionable.
+4. **Security & Privacy Rule**:
+   - NEVER ask for, disclose, or attempt to handle private keys, seed phrases, or transaction PINs.
+
+Keep your tone professional, articulate, proactive, and data-driven like a top-tier algorithmic hedge fund analyst.`;
 
 // Models tried in order — first success wins. Groq rotates/deprecates models;
 // this list covers the current active free-tier models.
 const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
   'qwen/qwen3.8-27b',
   'groq/compound',
   'groq/compound-mini',
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
 ];
 
 let cachedActiveModels = null;
@@ -62,7 +81,12 @@ async function getAvailableGroqModels() {
   }
 }
 
-async function callGroqModel(model, messages) {
+async function callGroqModel(model, messages, userContext = null) {
+  let systemContent = GROQ_SYSTEM;
+  if (userContext) {
+    systemContent += `\n\n### USER LIVE PLATFORM & PORTFOLIO CONTEXT:\n${typeof userContext === 'string' ? userContext : JSON.stringify(userContext, null, 2)}`;
+  }
+
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -71,9 +95,9 @@ async function callGroqModel(model, messages) {
     },
     body: JSON.stringify({
       model,
-      messages:    [{ role: 'system', content: GROQ_SYSTEM }, ...messages],
-      max_tokens:  512,
-      temperature: 0.7,
+      messages:    [{ role: 'system', content: systemContent }, ...messages],
+      max_tokens:  768,
+      temperature: 0.65,
     }),
   });
   if (!res.ok) {
@@ -84,16 +108,15 @@ async function callGroqModel(model, messages) {
   return data.choices[0].message.content;
 }
 
-async function callGroq(messages) {
+async function callGroq(messages, userContext = null) {
   let lastErr;
   const modelsToTry = await getAvailableGroqModels();
   for (const model of modelsToTry) {
     try {
-      const reply = await callGroqModel(model, messages);
+      const reply = await callGroqModel(model, messages, userContext);
       return reply;
     } catch (e) {
       lastErr = e;
-      // Only retry if it's a model-not-found / decommissioned error; bail on auth errors
       const msg = e.message || '';
       if (msg.includes('401') || msg.includes('Invalid API Key') || msg.includes('invalid_api_key')) {
         throw e;
@@ -196,7 +219,7 @@ export async function sendMessage({ conversationId, text, context }) {
         .slice(-10)  // last 5 exchanges for context
         .map((m) => ({ role: m.role, content: m.text }));
 
-      const reply = await callGroq(messages);
+      const reply = await callGroq(messages, context);
       const assistantMessage = appendToHistory(conversationId, {
         id:             `msg-${Date.now()}-a`,
         conversationId,

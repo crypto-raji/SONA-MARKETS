@@ -547,7 +547,7 @@ export default function Login() {
                     </svg>
                   ),
                   title: 'Live market data',
-                  desc: 'Real-time prices for stocks and crypto via Finnhub & CoinGecko.',
+                  desc: 'Real-time prices for stocks, commodities, and digital assets.',
                 },
                 {
                   icon: (
