@@ -1,0 +1,103 @@
+/*
+  Breakpoints: >=1024 desktop, 768-1023 tablet, <768 mobile.
+
+  IMPORTANT: this file is imported in main.jsx AFTER globals.css (not via
+  @import inside globals.css) so that these rules load LAST in the final
+  stylesheet. CSS resolves equal-specificity conflicts by source order, not
+  by whether a rule sits inside a matching @media block — so a later
+  unconditional rule in globals.css would otherwise silently beat an earlier
+  media-query rule in here even when the media query matches. Keep this file
+  loading last, and avoid re-declaring these selectors anywhere else.
+
+  Also: never combine a class here (e.g. .sidebar-nav) with an inline
+  `style={{ display: ... }}` in JSX — inline styles always win over any
+  class, silently breaking the responsive override regardless of import
+  order. Put `display` in CSS when a class needs to toggle it responsively.
+*/
+
+@media (max-width: 1023px) {
+  .app-main { margin-left: 0; }
+  .page-container { padding: var(--space-4); padding-bottom: var(--space-6); }
+
+  /* Mobile has no persistent Sidebar, so the header shows brand identity
+     + the hamburger drawer trigger instead of the per-page title. */
+  .hamburger-btn { display: inline-flex; align-items: center; justify-content: center; }
+  .header-brand { display: flex; }
+  .header-page-title { display: none; }
+}
+
+@media (max-width: 640px) {
+  .page-container { padding: var(--space-3); padding-bottom: var(--space-5); }
+  .modal-panel { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; align-self: flex-end; }
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; }
+}
+
+.grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+@media (max-width: 1023px) {
+  .grid-responsive { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .grid-responsive { grid-template-columns: 1fr; }
+}
+
+/* Desktop sidebar: visible + flex by default, hidden below 1024px. Mobile
+   uses the hamburger-triggered NavDrawer overlay instead (see NavDrawer.jsx)
+   — there is deliberately no persistent bottom navigation bar on mobile;
+   all navigation on small screens goes through that overlay menu.
+   Display is set here (not inline in JSX) specifically so this media
+   query can control it — see file header comment. */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 1023px) {
+  .sidebar-nav { display: none; }
+}
+
+.table-responsive { width: 100%; overflow-x: auto; }
+@media (max-width: 640px) {
+  .table-to-cards thead { display: none; }
+  .table-to-cards tr {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .table-to-cards td {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border: none !important;
+  }
+  .table-to-cards td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 13px;
+  }
+}
+
+/* Header: on narrow phones, collapse to icon-only controls and let the
+   balance-visibility pill shrink so nothing gets clipped (as seen with
+   "Search" being cut off at ~360-400px viewports before this fix). */
+@media (max-width: 480px) {
+  .app-header { padding: 0 var(--space-3); gap: var(--space-2); }
+  .header-actions { gap: var(--space-2); }
+  .header-search-label { display: none; }
+  .header-balance-pill { padding: 4px 8px; }
+}
+@media (max-width: 380px) {
+  .header-balance-label { display: none; }
+}
+
+/* Global overflow guard: nothing should be able to force horizontal
+   scroll on narrow viewports (long unbreakable strings, fixed-width
+   children that don't account for very small screens, etc). */
+@media (max-width: 480px) {
+  html, body { overflow-x: hidden; }
+}

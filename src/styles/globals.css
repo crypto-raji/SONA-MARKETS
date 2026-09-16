@@ -1,0 +1,341 @@
+@import './variables.css';
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--transition-base), color var(--transition-base);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+p { margin: 0; }
+
+a { color: inherit; text-decoration: none; }
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  gap: var(--space-3);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Hamburger + brand row in Header — mobile-only; visibility per breakpoint
+   is set in responsive.css (hidden/shown there, never via inline style —
+   see that file's header comment for why that distinction matters).
+   Desktop already shows brand identity in the persistent Sidebar, so the
+   header shows the per-page title instead; mobile has no sidebar, so it
+   shows brand identity (hamburger + logo + "Sona") instead of the title. */
+.hamburger-btn {
+  display: none;
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.header-brand {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.header-brand span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.header-page-title {
+  display: block;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--sidebar-width);
+}
+
+.page-container {
+  padding: var(--space-6);
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+  flex: 1;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-hover); }
+
+.btn-secondary {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--color-accent); }
+
+.btn-danger {
+  background: var(--color-negative-soft);
+  color: var(--color-negative);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--color-text-primary); }
+
+.btn-block { width: 100%; }
+.btn-sm { padding: 8px 14px; font-size: 13px; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pill-positive { background: var(--color-positive-soft); color: var(--color-positive); }
+.pill-negative { background: var(--color-negative-soft); color: var(--color-negative); }
+.pill-neutral { background: var(--color-accent-soft); color: var(--color-accent); }
+.pill-warning { background: var(--color-warning-soft); color: var(--color-warning); }
+
+.text-secondary { color: var(--color-text-secondary); }
+.text-tertiary { color: var(--color-text-tertiary); }
+.text-positive { color: var(--color-positive); }
+.text-negative { color: var(--color-negative); }
+
+.input-field {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+.input-field:focus { border-color: var(--color-accent); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.modal-panel {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.demo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-border) 25%, var(--color-surface-raised) 50%, var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.scroll-hide::-webkit-scrollbar { display: none; }
+.scroll-hide { scrollbar-width: none; }
+
+/* Mobile navigation drawer (hamburger overlay). Deliberately a fixed dark
+   theme regardless of the app's light/dark setting, matching Sona's brand
+   treatment for this one surface — see NavDrawer.jsx. Sits above
+   everything (z-index) and never affects document flow/layout of the page
+   underneath, since it's a fixed-position overlay, not a layout push. */
+.nav-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 5, 10, 0.55);
+  z-index: 300;
+  display: flex;
+}
+
+.nav-drawer-panel {
+  position: relative;
+  width: min(320px, 86vw);
+  height: 100%;
+  background: #0B0E1A;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-4);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: nav-drawer-slide-in 180ms ease-out;
+}
+
+@keyframes nav-drawer-slide-in {
+  from { transform: translateX(-16px); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.nav-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+
+.nav-drawer-close {
+  color: #A2AABB;
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+.nav-drawer-close:hover { color: #F1F3F7; background: rgba(255,255,255,0.06); }
+
+.nav-drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 13px var(--space-3);
+  border-radius: var(--radius-md);
+  color: #C7CCDA;
+  font-size: 15px;
+  font-weight: 500;
+  width: 100%;
+  text-align: left;
+}
+.nav-drawer-item:hover { background: rgba(255,255,255,0.05); }
+.nav-drawer-item.active { background: var(--color-accent); color: #fff; }
+.nav-drawer-item-icon { font-size: 17px; width: 20px; text-align: center; flex-shrink: 0; }
+
+.nav-drawer-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: var(--space-4) 0;
+}
+
+.nav-drawer-logout { color: #F0665F; }
+.nav-drawer-logout:hover { background: rgba(240,102,95,0.1); }
+
+.nav-drawer-wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 120px;
+  pointer-events: none;
+}
