@@ -16,7 +16,7 @@
  */
 import * as bip39       from 'bip39';
 import { HDKey }        from '@scure/bip32';
-import { bech32 }       from '@scure/base';
+import { bech32, base58 } from '@scure/base';
 import { sha256 }       from '@noble/hashes/sha256';
 import { ripemd160 }    from '@noble/hashes/ripemd160';
 import { keccak_256 }   from '@noble/hashes/sha3';
@@ -207,6 +207,23 @@ export async function revealMnemonic(uid, customCipher = null) {
     return mnemonic;
   } catch (err) {
     console.error('[Sona HD Wallet] Failed to reveal mnemonic:', err);
+    return null;
+  }
+}
+
+/**
+ * Reveal the Base58-encoded Solana private key for importing directly into Solflare / Phantom.
+ */
+export async function revealSolanaPrivateKey(uid, customCipher = null) {
+  const cipher = customCipher || localStorage.getItem(LS_MNEMONIC_KEY(uid));
+  if (!cipher) return null;
+  try {
+    const mnemonic = await decrypt(uid, cipher);
+    const seed     = await bip39.mnemonicToSeed(mnemonic);
+    const sol      = solanaAddressFromSeed(seed);
+    return base58.encode(sol.secretKey);
+  } catch (err) {
+    console.error('[Sona HD Wallet] Failed to reveal Solana private key:', err);
     return null;
   }
 }

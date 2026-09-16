@@ -1,42 +1,53 @@
 import React, { useState, useEffect } from 'react';
-import { exportRecoveryPhrase, verifyTransactionPin } from '../services/authService.js';
+import { exportRecoveryPhrase, exportSolanaPrivateKey, verifyTransactionPin } from '../services/authService.js';
 
 export default function MnemonicModal({ open, onClose, user }) {
+  const [activeTab, setActiveTab] = useState('mnemonic'); // 'mnemonic' | 'privateKey'
   const [mnemonic, setMnemonic] = useState('');
+  const [privateKey, setPrivateKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [revealed, setRevealed] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [revealedPhrase, setRevealedPhrase] = useState(false);
+  const [revealedKey, setRevealedKey] = useState(false);
+  const [copiedPhrase, setCopiedPhrase] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinRequired, setPinRequired] = useState(Boolean(user?.pinIsSet));
   const [pinVerified, setPinVerified] = useState(!user?.pinIsSet);
 
   useEffect(() => {
     if (open) {
-      setRevealed(false);
-      setCopied(false);
+      setActiveTab('mnemonic');
+      setRevealedPhrase(false);
+      setRevealedKey(false);
+      setCopiedPhrase(false);
+      setCopiedKey(false);
       setError('');
       setPinInput('');
       setPinRequired(Boolean(user?.pinIsSet));
       setPinVerified(!user?.pinIsSet);
       if (!user?.pinIsSet) {
-        loadPhrase();
+        loadCredentials();
       }
     }
   }, [open, user]);
 
-  const loadPhrase = async () => {
+  const loadCredentials = async () => {
     setLoading(true);
     setError('');
     try {
-      const phrase = await exportRecoveryPhrase();
-      if (!phrase) {
-        setError('No recovery phrase found for this session.');
+      const [phrase, pk] = await Promise.all([
+        exportRecoveryPhrase(),
+        exportSolanaPrivateKey(),
+      ]);
+      if (!phrase && !pk) {
+        setError('No wallet credentials found for this session.');
       } else {
-        setMnemonic(phrase);
+        if (phrase) setMnemonic(phrase);
+        if (pk) setPrivateKey(pk);
       }
     } catch (err) {
-      setError('Failed to decrypt recovery phrase: ' + err.message);
+      setError('Failed to decrypt wallet keys: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -54,7 +65,7 @@ export default function MnemonicModal({ open, onClose, user }) {
       const isValid = await verifyTransactionPin(pinInput);
       if (isValid?.success || isValid === true) {
         setPinVerified(true);
-        await loadPhrase();
+        await loadCredentials();
       } else {
         setError('Incorrect PIN. Please try again.');
       }
@@ -65,12 +76,21 @@ export default function MnemonicModal({ open, onClose, user }) {
     }
   };
 
-  const handleCopy = async () => {
+  const handleCopyPhrase = async () => {
     if (!mnemonic) return;
     try {
       await navigator.clipboard.writeText(mnemonic);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedPhrase(true);
+      setTimeout(() => setCopiedPhrase(false), 2000);
+    } catch {}
+  };
+
+  const handleCopyPrivateKey = async () => {
+    if (!privateKey) return;
+    try {
+      await navigator.clipboard.writeText(privateKey);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
     } catch {}
   };
 
@@ -116,10 +136,10 @@ export default function MnemonicModal({ open, onClose, user }) {
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text)' }}>
-                Secret Recovery Phrase
+                Wallet Security & Export
               </div>
               <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-                BIP-39 12-word master key
+                Export your recovery credentials
               </div>
             </div>
           </div>
@@ -134,13 +154,51 @@ export default function MnemonicModal({ open, onClose, user }) {
           </button>
         </div>
 
+        {/* Navigation Tabs */}
+        {(!pinRequired || pinVerified) && (
+          <div style={{
+            display: 'flex',
+            borderBottom: '1px solid var(--color-border)',
+            background: 'var(--color-surface-2)',
+          }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('mnemonic')}
+              style={{
+                flex: 1, padding: '12px 14px', fontSize: 12, fontWeight: 600,
+                border: 'none', cursor: 'pointer',
+                background: activeTab === 'mnemonic' ? 'var(--color-surface)' : 'transparent',
+                color: activeTab === 'mnemonic' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                borderBottom: activeTab === 'mnemonic' ? '2px solid var(--color-accent)' : '2px solid transparent',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              12-Word Phrase
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('privateKey')}
+              style={{
+                flex: 1, padding: '12px 14px', fontSize: 12, fontWeight: 600,
+                border: 'none', cursor: 'pointer',
+                background: activeTab === 'privateKey' ? 'var(--color-surface)' : 'transparent',
+                color: activeTab === 'privateKey' ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                borderBottom: activeTab === 'privateKey' ? '2px solid var(--color-accent)' : '2px solid transparent',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              Solana Private Key
+            </button>
+          </div>
+        )}
+
         {/* Content Body */}
         <div style={{ padding: 20 }}>
           {pinRequired && !pinVerified ? (
             /* PIN Verification step */
             <form onSubmit={handleVerifyPin} style={{ textAlign: 'center', padding: '10px 0' }}>
               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-                Enter your Transaction PIN to unlock your secret recovery phrase.
+                Enter your Transaction PIN to unlock your secret credentials.
               </div>
               <input
                 type="password"
@@ -170,12 +228,11 @@ export default function MnemonicModal({ open, onClose, user }) {
                   className="btn btn-primary"
                   style={{ width: '100%', padding: '12px', fontSize: 13, fontWeight: 600 }}
                 >
-                  {loading ? 'Verifying…' : 'Unlock Recovery Phrase'}
+                  {loading ? 'Verifying…' : 'Unlock Credentials'}
                 </button>
               </div>
             </form>
           ) : (
-            /* Recovery Phrase Display */
             <>
               {error ? (
                 <div style={{
@@ -186,7 +243,8 @@ export default function MnemonicModal({ open, onClose, user }) {
                 }}>
                   {error}
                 </div>
-              ) : (
+              ) : activeTab === 'mnemonic' ? (
+                /* TAB 1: 12-Word Mnemonic Phrase */
                 <>
                   {/* Warning banner */}
                   <div style={{
@@ -197,7 +255,7 @@ export default function MnemonicModal({ open, onClose, user }) {
                   }}>
                     <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
                     <div style={{ fontSize: 11, color: '#C9913A', lineHeight: 1.5 }}>
-                      <strong>Keep this secret.</strong> Anyone with these 12 words can access and control all your funds across Solana, Ethereum, BNB, and Bitcoin.
+                      <strong>Master Recovery Phrase.</strong> Back up these 12 words in a safe place.
                     </div>
                   </div>
 
@@ -228,8 +286,8 @@ export default function MnemonicModal({ open, onClose, user }) {
                           alignItems: 'center',
                           gap: 6,
                           fontSize: 12,
-                          filter: revealed ? 'none' : 'blur(5px)',
-                          userSelect: revealed ? 'text' : 'none',
+                          filter: revealedPhrase ? 'none' : 'blur(5px)',
+                          userSelect: revealedPhrase ? 'text' : 'none',
                           transition: 'filter 0.2s ease',
                         }}
                       >
@@ -248,9 +306,9 @@ export default function MnemonicModal({ open, onClose, user }) {
                       </div>
                     ))}
 
-                    {!revealed && (
+                    {!revealedPhrase && (
                       <div
-                        onClick={() => setRevealed(true)}
+                        onClick={() => setRevealedPhrase(true)}
                         style={{
                           position: 'absolute', inset: 0,
                           display: 'flex', flexDirection: 'column',
@@ -271,24 +329,114 @@ export default function MnemonicModal({ open, onClose, user }) {
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button
                       type="button"
-                      onClick={() => setRevealed(!revealed)}
+                      onClick={() => setRevealedPhrase(!revealedPhrase)}
                       className="btn btn-secondary"
                       style={{ flex: 1, padding: '10px 14px', fontSize: 12, fontWeight: 600 }}
                     >
-                      {revealed ? '🙈 Hide Words' : '👁️ Reveal Words'}
+                      {revealedPhrase ? '🙈 Hide Words' : '👁️ Reveal Words'}
                     </button>
                     <button
                       type="button"
-                      onClick={handleCopy}
+                      onClick={handleCopyPhrase}
                       disabled={!mnemonic}
                       className="btn btn-primary"
                       style={{
                         flex: 1, padding: '10px 14px', fontSize: 12, fontWeight: 600,
-                        background: copied ? 'var(--color-positive)' : undefined,
-                        borderColor: copied ? 'var(--color-positive)' : undefined,
+                        background: copiedPhrase ? 'var(--color-positive)' : undefined,
+                        borderColor: copiedPhrase ? 'var(--color-positive)' : undefined,
                       }}
                     >
-                      {copied ? '✓ Copied All' : '📋 Copy All'}
+                      {copiedPhrase ? '✓ Copied All' : '📋 Copy All'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* TAB 2: Solana Base58 Private Key */
+                <>
+                  <div style={{
+                    display: 'flex', gap: 10, padding: 12,
+                    background: 'rgba(99, 102, 241, 0.08)',
+                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                    borderRadius: 12, marginBottom: 16,
+                  }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>⚡</span>
+                    <div style={{ fontSize: 11, color: '#818cf8', lineHeight: 1.5 }}>
+                      <strong>Solflare & Phantom Import:</strong> Copy this Base58 Private Key and choose <em>"Import Private Key"</em> in Solflare or Phantom to access your exact address and funds.
+                    </div>
+                  </div>
+
+                  {/* Private Key Box */}
+                  <div
+                    style={{
+                      position: 'relative',
+                      background: 'var(--color-surface-2)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 14,
+                      padding: 14,
+                      marginBottom: 16,
+                      minHeight: 100,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '100%',
+                        fontSize: 12,
+                        lineHeight: 1.6,
+                        fontFamily: 'var(--font-mono)',
+                        wordBreak: 'break-all',
+                        color: 'var(--color-text)',
+                        filter: revealedKey ? 'none' : 'blur(6px)',
+                        userSelect: revealedKey ? 'text' : 'none',
+                        transition: 'filter 0.2s ease',
+                      }}
+                    >
+                      {privateKey || 'No private key available'}
+                    </div>
+
+                    {!revealedKey && (
+                      <div
+                        onClick={() => setRevealedKey(true)}
+                        style={{
+                          position: 'absolute', inset: 0,
+                          display: 'flex', flexDirection: 'column',
+                          alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', background: 'rgba(10,14,32,0.4)',
+                          borderRadius: 14,
+                        }}
+                      >
+                        <span style={{ fontSize: 24, marginBottom: 4 }}>👁️</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent)' }}>
+                          Click to Reveal Private Key
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setRevealedKey(!revealedKey)}
+                      className="btn btn-secondary"
+                      style={{ flex: 1, padding: '10px 14px', fontSize: 12, fontWeight: 600 }}
+                    >
+                      {revealedKey ? '🙈 Hide Key' : '👁️ Reveal Key'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyPrivateKey}
+                      disabled={!privateKey}
+                      className="btn btn-primary"
+                      style={{
+                        flex: 1, padding: '10px 14px', fontSize: 12, fontWeight: 600,
+                        background: copiedKey ? 'var(--color-positive)' : undefined,
+                        borderColor: copiedKey ? 'var(--color-positive)' : undefined,
+                      }}
+                    >
+                      {copiedKey ? '✓ Copied Key' : '📋 Copy Private Key'}
                     </button>
                   </div>
                 </>

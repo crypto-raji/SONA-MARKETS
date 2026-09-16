@@ -108,11 +108,12 @@ export async function getWalletAddress(session) {
  */
 // Devnet RPC endpoints tried in order
 const DEVNET_RPCS = [
+  'https://devnet.helius-rpc.com/?api-key=15319bf4-5b40-4958-ac71-6d44cf7b391e',
   'https://api.devnet.solana.com',
   'https://rpc.ankr.com/solana_devnet',
-  'https://devnet.helius-rpc.com/?api-key=15319bf4-5b40-4958-ac71-6d44cf7b391e',
 ];
 const MAINNET_RPCS = [
+  'https://mainnet.helius-rpc.com/?api-key=15319bf4-5b40-4958-ac71-6d44cf7b391e',
   'https://api.mainnet-beta.solana.com',
   'https://rpc.ankr.com/solana',
 ];

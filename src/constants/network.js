@@ -27,7 +27,7 @@ export const SOLANA_NETWORKS = {
     label: 'Mainnet Beta',
     sublabel: 'Solana main network.',
     isProduction: true,
-    defaultRpcUrl: 'https://api.mainnet-beta.solana.com',
+    defaultRpcUrl: 'https://mainnet.helius-rpc.com/?api-key=15319bf4-5b40-4958-ac71-6d44cf7b391e',
     usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     explorerBase: 'https://solscan.io',
     explorerCluster: '',

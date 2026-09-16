@@ -29,6 +29,7 @@ import {
   restoreHDWalletFromCipher,
   getEncryptedMnemonic,
   revealMnemonic,
+  revealSolanaPrivateKey,
 } from './hdWalletService.js';
 
 const WALLET_SESSION_KEY = 'sona_wallet_session';
@@ -465,6 +466,32 @@ export async function exportRecoveryPhrase() {
       const cipher = snap.data()?.encryptedMnemonic;
       if (cipher) {
         return await revealMnemonic(uid, cipher);
+      }
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * Reveal / export Solana Base58 Private Key for direct import into Solflare & Phantom.
+ */
+export async function exportSolanaPrivateKey() {
+  const currentUser = auth?.currentUser;
+  const session = getWalletSession();
+  const uid = currentUser?.uid || session?.id || session?.uid;
+  if (!uid) return null;
+
+  // 1. Try local storage first
+  let pk = await revealSolanaPrivateKey(uid);
+  if (pk) return pk;
+
+  // 2. Try Firestore if local was cleared
+  if (currentUser) {
+    try {
+      const snap = await getDoc(userRef(uid));
+      const cipher = snap.data()?.encryptedMnemonic;
+      if (cipher) {
+        return await revealSolanaPrivateKey(uid, cipher);
       }
     } catch {}
   }
