@@ -39,13 +39,18 @@ function userRef(uid) {
 }
 
 function mapFirebaseUser(firebaseUser, extra = {}) {
+  const uid = firebaseUser.uid;
+  const pinIsSet = Boolean(
+    localStorage.getItem(`${PIN_STORAGE_KEY}_${uid}`) ||
+    localStorage.getItem(PIN_STORAGE_KEY)
+  );
   return {
     id: firebaseUser.uid,
     name: firebaseUser.displayName || 'User',
     email: firebaseUser.email,
     photoURL: firebaseUser.photoURL,
     authMethod: 'google',
-    pinIsSet: false,
+    pinIsSet,
     // wallet addresses per chain — set on first sign-in
     wallets: { solana: null, ethereum: null, bnb: null, bitcoin: null },
     walletProvider: 'sona',
@@ -115,7 +120,17 @@ async function getOrCreateUserDoc(firebaseUser) {
       } catch {}
     }
 
-    return { id: uid, ...data, wallets: wallets.solana ? wallets : (data.wallets || wallets) };
+    const localPin = Boolean(
+      localStorage.getItem(`${PIN_STORAGE_KEY}_${uid}`) ||
+      localStorage.getItem(PIN_STORAGE_KEY)
+    );
+
+    return {
+      id: uid,
+      ...data,
+      pinIsSet: Boolean(data.pinIsSet || localPin),
+      wallets: wallets.solana ? wallets : (data.wallets || wallets),
+    };
   }
 
   // ── Step 3: Brand new user account ────────────────────────────────
@@ -207,7 +222,11 @@ export async function signInWithWallet({ address, provider, chain }) {
   if (chain === 'bnb')      wallets.bnb      = address;
   if (chain === 'bitcoin')  wallets.bitcoin  = address;
 
-  const shortAddr = `${address.slice(0, 6)}…${address.slice(-4)}`;
+  const localPin = Boolean(
+    localStorage.getItem(`${PIN_STORAGE_KEY}_${uid}`) ||
+    localStorage.getItem(PIN_STORAGE_KEY)
+  );
+
   const user = {
     id:             uid,
     name:           `${provider.charAt(0).toUpperCase() + provider.slice(1)} Wallet`,
@@ -218,7 +237,7 @@ export async function signInWithWallet({ address, provider, chain }) {
     wallets,
     connectedChain: chain,
     connectedAddress: address,
-    pinIsSet:       false,
+    pinIsSet:       localPin,
   };
 
   // Persist session so AuthContext can restore it on reload
@@ -331,7 +350,7 @@ const PIN_STORAGE_KEY = 'sona_pin_hash';
 
 /**
  * Hash and store the user's transaction PIN.
- * Saves to localStorage immediately (instant), then syncs to Firestore.
+ * Saves to localStorage immediately (instant, <1ms), then syncs to Firestore in background.
  */
 export async function createTransactionPin(pin) {
   if (!/^\d{4,6}$/.test(pin)) throw new Error('PIN must be 4–6 digits.');
@@ -339,7 +358,7 @@ export async function createTransactionPin(pin) {
 
   const hash = await hashPin(pin);
 
-  // 1. Save locally for this user
+  // 1. Save locally for this user (instantaneous)
   try {
     localStorage.setItem(PIN_STORAGE_KEY, hash);
     localStorage.setItem(`${PIN_STORAGE_KEY}_${uid}`, hash);
@@ -352,13 +371,17 @@ export async function createTransactionPin(pin) {
     }
   } catch {}
 
-  // 2. Sync to Firestore if authenticated with Firebase
+  // 2. Sync to Firestore in the background asynchronously without blocking the UI
   if (isFirebaseConfigured && auth?.currentUser) {
-    try {
-      await setDoc(userRef(auth.currentUser.uid), { pinIsSet: true, pinHash: hash }, { merge: true });
-    } catch (e) {
-      console.warn('[Sona] Remote PIN sync notice:', e);
-    }
+    const firestoreTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('firestore_timeout')), 2500)
+    );
+    Promise.race([
+      setDoc(userRef(auth.currentUser.uid), { pinIsSet: true, pinHash: hash }, { merge: true }),
+      firestoreTimeout,
+    ]).catch((e) => {
+      console.warn('[Sona] Remote PIN sync notice (background):', e);
+    });
   }
 
   return { success: true };
@@ -366,7 +389,7 @@ export async function createTransactionPin(pin) {
 
 /**
  * Verify the entered PIN against the stored hash.
- * Checks localStorage first (fast), falls back to Firestore.
+ * Checks localStorage first (fast), falls back to Firestore with a timeout.
  */
 export async function verifyTransactionPin(pin) {
   if (!/^\d{4,6}$/.test(pin)) return { success: false };
@@ -374,7 +397,7 @@ export async function verifyTransactionPin(pin) {
 
   const hash = await hashPin(pin);
 
-  // 1. Check user-specific localStorage first
+  // 1. Check user-specific localStorage first (instant)
   try {
     const localUserPin = localStorage.getItem(`${PIN_STORAGE_KEY}_${uid}`);
     if (localUserPin) return { success: hash === localUserPin };
@@ -383,10 +406,16 @@ export async function verifyTransactionPin(pin) {
     if (localDefault) return { success: hash === localDefault };
   } catch {}
 
-  // 2. Fallback to Firestore
+  // 2. Fallback to Firestore with timeout
   if (isFirebaseConfigured && auth?.currentUser) {
     try {
-      const snap = await getDoc(userRef(auth.currentUser.uid));
+      const firestoreTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('firestore_timeout')), 2000)
+      );
+      const snap = await Promise.race([
+        getDoc(userRef(auth.currentUser.uid)),
+        firestoreTimeout,
+      ]);
       const stored = snap.data()?.pinHash;
       if (stored) {
         try {
@@ -395,7 +424,9 @@ export async function verifyTransactionPin(pin) {
         } catch {}
         return { success: hash === stored };
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[Sona] Remote PIN verify notice:', e);
+    }
   }
 
   return { success: false };

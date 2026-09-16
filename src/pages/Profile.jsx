@@ -270,7 +270,12 @@ export default function Profile() {
         open={pinModalOpen}
         mode={user?.pinIsSet ? 'verify' : 'create'}
         onClose={() => setPinModalOpen(false)}
-        onSuccess={() => setPinModalOpen(false)}
+        onSuccess={() => {
+          setPinModalOpen(false);
+          if (user && setUser) {
+            setUser({ ...user, pinIsSet: true });
+          }
+        }}
       />
     </div>
   );
