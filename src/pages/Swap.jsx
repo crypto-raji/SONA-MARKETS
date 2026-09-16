@@ -47,7 +47,12 @@ export default function Swap() {
   const fromPrice = fromQuote?.price || 0;
   const toPrice = toQuote?.price || 0;
   const fromHolding = portfolio?.holdings?.find((h) => h.symbol === fromSymbol);
-  const available = fromHolding?.quantity || 0;
+  const onChainToken = portfolio?.onChainTokens?.find((t) => t.symbol === fromSymbol);
+  const onChainSol = fromSymbol === 'SOL' ? (portfolio?.availableBalance || 0) : 0;
+  const available = Math.max(
+    fromHolding?.quantity || 0,
+    (onChainToken?.amount || 0) + onChainSol
+  );
 
   const usdValue = (Number(fromAmount) || 0) * fromPrice;
   const fee = transactionService.estimateFee(usdValue);

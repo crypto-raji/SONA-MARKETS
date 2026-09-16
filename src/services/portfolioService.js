@@ -73,17 +73,31 @@ export async function getPortfolio() {
     })(),
   ]);
 
+  const onChainTokens = onChain.tokens || [];
+  let onChainTokensValue = 0;
+  for (const t of onChainTokens) {
+    if (t.symbol === 'USDC' || t.symbol === 'USDT') {
+      onChainTokensValue += t.amount;
+    } else {
+      try {
+        const quote = await marketService.getAssetPrice(t.symbol);
+        onChainTokensValue += t.amount * (quote?.price || 0);
+      } catch {}
+    }
+  }
+
   const investedValue     = holdings.reduce((s, h) => s + h.costBasis, 0);
-  const totalValue        = holdings.reduce((s, h) => s + h.currentValue, 0);
-  const profitLoss        = Number((totalValue - investedValue).toFixed(2));
+  const internalTotal     = holdings.reduce((s, h) => s + h.currentValue, 0);
+  const totalValue        = Number((internalTotal + onChainTokensValue).toFixed(2));
+  const profitLoss        = Number((internalTotal - investedValue).toFixed(2));
   const profitLossPercent = investedValue
     ? Number(((profitLoss / investedValue) * 100).toFixed(2))
     : 0;
 
   return {
-    totalValue:       Number(totalValue.toFixed(2)),
+    totalValue,
     availableBalance: Number((onChain.sol || 0).toFixed(4)),
-    onChainTokens:    onChain.tokens || [],
+    onChainTokens,
     balanceIsLive:    onChain.isLive || false,
     walletAddress:    onChain.address || null,
     investedValue:    Number(investedValue.toFixed(2)),

@@ -64,38 +64,40 @@ export default function ReceiveModal({ open = true, onClose, defaultSymbol, asMo
 
   // ── Deposit detection (Solana only) ─────────────────────────────────────────
   const [depositStatus, setDepositStatus] = useState('idle'); // idle | watching | confirmed | timeout
-  const [depositedSol, setDepositedSol] = useState(null);
+  const [depositResult, setDepositResult] = useState(null);
   const watchingRef = useRef(false);
-  const prevSolRef  = useRef(null);
 
   const startWatching = useCallback(async () => {
     if (!address || network !== 'Solana' || watchingRef.current) return;
     watchingRef.current = true;
     setDepositStatus('watching');
-    setDepositedSol(null);
+    setDepositResult(null);
 
-    // Snapshot current balance before watching
-    const { sol: currentSol } = await getWalletBalance(address);
-    prevSolRef.current = currentSol;
+    // Snapshot current balances before watching
+    const currentBal = await getWalletBalance(address);
+    const tokensMap = Object.fromEntries((currentBal.tokens || []).map((t) => [t.symbol, t.amount]));
+    const snapshot = { sol: currentBal.sol, tokensMap };
 
-    const result = await waitForDeposit(address, currentSol, { intervalMs: 5000, timeoutMs: 180_000 });
+    const result = await waitForDeposit(address, snapshot, { intervalMs: 4000, timeoutMs: 180_000 });
     watchingRef.current = false;
 
     if (result.received) {
       setDepositStatus('confirmed');
-      setDepositedSol(result.sol - currentSol);
+      setDepositResult({ type: result.type, amount: result.amount });
       // Record in Firestore
-      try { await receiveAsset({ symbol: 'SOL', network: 'Solana' }); } catch {}
+      try {
+        await receiveAsset({ symbol: result.type || symbol || 'USDC', network: 'Solana' });
+      } catch {}
     } else {
       setDepositStatus('timeout');
     }
-  }, [address, network]);
+  }, [address, network, symbol]);
 
   // Reset watcher when address or network changes
   useEffect(() => {
     watchingRef.current = false;
     setDepositStatus('idle');
-    setDepositedSol(null);
+    setDepositResult(null);
   }, [address, network]);
 
   async function handleGenerate() {
@@ -251,9 +253,9 @@ export default function ReceiveModal({ open = true, onClose, defaultSymbol, asMo
               background: 'rgba(34,197,94,0.12)', borderRadius: 10,
               fontSize: 13, color: '#16a34a',
             }}>
-              ✓ Deposit detected — {depositedSol !== null ? `+${depositedSol.toFixed(4)} SOL` : ''}
+              ✓ Deposit detected — {depositResult ? `+${depositResult.amount >= 1 ? depositResult.amount.toLocaleString(undefined, { maximumFractionDigits: 4 }) : depositResult.amount.toFixed(4)} ${depositResult.type}` : 'Received'}
               <button
-                onClick={() => { setDepositStatus('idle'); setDepositedSol(null); }}
+                onClick={() => { setDepositStatus('idle'); setDepositResult(null); }}
                 style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.7, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
               >
                 Dismiss

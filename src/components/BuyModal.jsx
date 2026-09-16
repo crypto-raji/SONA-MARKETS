@@ -41,7 +41,12 @@ export default function BuyModal({ asset, open, onClose }) {
   const price = asset.quote?.price || 0;
   const payPrice = payQuote?.price || 0;
   const payHolding = portfolio?.holdings?.find((h) => h.symbol === payWithSymbol);
-  const availablePay = payHolding?.quantity || 0;
+  const onChainToken = portfolio?.onChainTokens?.find((t) => t.symbol === payWithSymbol);
+  const onChainSol = payWithSymbol === 'SOL' ? (portfolio?.availableBalance || 0) : 0;
+  const availablePay = Math.max(
+    payHolding?.quantity || 0,
+    (onChainToken?.amount || 0) + onChainSol
+  );
 
   const usdValue = (Number(amount) || 0) * payPrice;
   const fee = transactionService.estimateFee(usdValue);

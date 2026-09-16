@@ -17,18 +17,30 @@ import {
 import { getActiveNetwork, getRpcUrl, getUsdcMint } from '../constants/network.js';
 import { getSolanaKeypair } from './hdWalletService.js';
 
-// SPL token mint addresses — USDC switches by cluster, others are mainnet Sollet
-const SPL_MINTS = {
-  USDC: getUsdcMint(),
-  BTC:  '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E',
-  ETH:  '2FPyTwcZLUg1MDrwsyoP4D6s1tM7hAkHYRjkNb5w6Pxk',
-  BNB:  '9gP2kCy3wA1ctvYWQk75guqXuHfrEomqydHLtcTCqiLa',
+// Known mint mappings across Solana mainnet and devnet (both standard SPL & Token-2022)
+export const KNOWN_SOLANA_MINTS = {
+  // USDC
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'USDC', // Mainnet SPL
+  '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU': 'USDC', // Devnet SPL
+  'CXk2AMBfi3TwaEL2468s6zP8xq9NxTXjp9gjMgzeUynM': 'USDC', // Devnet Token-2022 (Circle Faucet)
+  'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr': 'USDC', // Devnet alternate
+  // USDT
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 'USDT',
+  'EJwZgeZrdC8TXT2sgQjVoVHdpnhE2mCePnoctpkTremb': 'USDT',
+  // BTC
+  '9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E': 'BTC',
+  '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh': 'BTC',
+  // ETH
+  '2FPyTwcZLUg1MDrwsyoP4D6s1tM7hAkHYRjkNb5w6Pxk': 'ETH',
+  '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs': 'ETH',
+  // BNB
+  '9gP2kCy3wA1ctvYWQk75guqXuHfrEomqydHLtcTCqiLa': 'BNB',
 };
 
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-
-// Mint → symbol reverse map
-const MINT_TO_SYMBOL = Object.fromEntries(Object.entries(SPL_MINTS).map(([k, v]) => [v, k]));
+const TOKEN_PROGRAMS = [
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // Standard SPL Token Program
+  'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', // SPL Token-2022 Program
+];
 
 export const SUPPORTED_WALLETS = [
   { id: 'phantom',  name: 'Phantom',  network: 'Solana' },
@@ -86,7 +98,7 @@ export async function getWalletAddress(session) {
 
 /**
  * Phase 1 — live on-chain balance reading.
- * Fetches SOL (native) + all SPL token balances for the given Solana address.
+ * Fetches SOL (native) + all SPL & Token-2022 token balances for the given Solana address.
  * Falls back to zeros on RPC failure so the UI never crashes.
  */
 // Devnet RPC endpoints tried in order
@@ -137,22 +149,38 @@ async function fetchSolBalance(address) {
 
 async function fetchSplTokens(address, rpc) {
   if (!rpc) return [];
-  try {
-    const result = await rpcCall(rpc, 'getTokenAccountsByOwner', [
-      address,
-      { programId: TOKEN_PROGRAM_ID.toBase58() },
-      { encoding: 'jsonParsed', commitment: 'confirmed' },
-    ], 8000);
-    const tokens = [];
-    for (const { account } of (result?.value || [])) {
-      const info   = account?.data?.parsed?.info;
-      const mint   = info?.mint;
-      const amount = info?.tokenAmount?.uiAmount ?? 0;
-      const symbol = MINT_TO_SYMBOL[mint];
-      if (symbol && amount > 0) tokens.push({ symbol, amount });
-    }
-    return tokens;
-  } catch { return []; }
+  const tokenTotals = {};
+
+  await Promise.allSettled(
+    TOKEN_PROGRAMS.map(async (progId) => {
+      try {
+        const result = await rpcCall(
+          rpc,
+          'getTokenAccountsByOwner',
+          [
+            address,
+            { programId: progId },
+            { encoding: 'jsonParsed', commitment: 'confirmed' },
+          ],
+          8000
+        );
+        for (const { account } of result?.value || []) {
+          const info   = account?.data?.parsed?.info;
+          const mint   = info?.mint;
+          const amount = info?.tokenAmount?.uiAmount ?? 0;
+          const symbol = KNOWN_SOLANA_MINTS[mint] || (mint === getUsdcMint() ? 'USDC' : null);
+          if (symbol && amount > 0) {
+            tokenTotals[symbol] = (tokenTotals[symbol] || 0) + amount;
+          }
+        }
+      } catch { /* try next program */ }
+    })
+  );
+
+  return Object.entries(tokenTotals).map(([symbol, amount]) => ({
+    symbol,
+    amount: Number(amount.toFixed(6)),
+  }));
 }
 
 export async function getWalletBalance(address) {
@@ -167,7 +195,7 @@ export async function getWalletBalance(address) {
 
     const splTokens = await fetchSplTokens(address, rpc);
     const tokens = [...splTokens];
-    if (sol > 0) tokens.unshift({ symbol: 'SOL', amount: sol });
+    if (sol > 0) tokens.unshift({ symbol: 'SOL', amount: Number(sol.toFixed(4)) });
 
     return { sol, tokens, isLive: true, network: getActiveNetwork(), rpcUrl: rpc };
   } catch (err) {
@@ -178,14 +206,25 @@ export async function getWalletBalance(address) {
 
 /**
  * Poll the chain until a balance change is detected or timeout is reached.
- * Used by the Receive page to detect an incoming deposit.
+ * Used by the Receive page to detect an incoming deposit (SOL or any SPL/Token-2022 token).
  */
-export async function waitForDeposit(address, prevSol, { intervalMs = 4000, timeoutMs = 120_000 } = {}) {
+export async function waitForDeposit(address, prevSnapshot = {}, { intervalMs = 4000, timeoutMs = 120_000 } = {}) {
   const start = Date.now();
+  const prevSol = typeof prevSnapshot === 'number' ? prevSnapshot : (prevSnapshot.sol || 0);
+  const prevTokens = typeof prevSnapshot === 'number' ? {} : (prevSnapshot.tokensMap || {});
+
   while (Date.now() - start < timeoutMs) {
     await new Promise((r) => setTimeout(r, intervalMs));
-    const { sol } = await getWalletBalance(address);
-    if (sol > prevSol) return { received: true, sol };
+    const current = await getWalletBalance(address);
+    if (current.sol > prevSol + 0.000001) {
+      return { received: true, type: 'SOL', amount: current.sol - prevSol, balance: current };
+    }
+    for (const t of current.tokens) {
+      const prevAmt = prevTokens[t.symbol] || 0;
+      if (t.amount > prevAmt + 0.000001) {
+        return { received: true, type: t.symbol, amount: t.amount - prevAmt, balance: current };
+      }
+    }
   }
   return { received: false };
 }

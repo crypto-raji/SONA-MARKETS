@@ -28,7 +28,12 @@ export default function SendModal({ open = true, onClose, defaultSymbol, asModal
 
   const asset = getAssetBySymbol(symbol);
   const holding = portfolio?.holdings?.find((h) => h.symbol === symbol);
-  const available = holding?.quantity || 0;
+  const onChainToken = portfolio?.onChainTokens?.find((t) => t.symbol === symbol);
+  const onChainSol = symbol === 'SOL' ? (portfolio?.availableBalance || 0) : 0;
+  const available = Math.max(
+    holding?.quantity || 0,
+    (onChainToken?.amount || 0) + onChainSol
+  );
   const networkFee = network === 'Solana' ? 0.000005 : 0.0015;
 
   const reset = () => {
